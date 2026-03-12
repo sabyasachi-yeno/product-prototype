@@ -156,6 +156,7 @@ const state = {
   deck: [],
   index: 0,
   matches: [],
+  passes: 0,
 };
 
 const els = {
@@ -169,7 +170,12 @@ const els = {
   interestGrid: document.getElementById("interestGrid"),
   pairingModeChoices: document.getElementById("pairingModeChoices"),
   riskTolerance: document.getElementById("riskTolerance"),
-  profilePreview: document.getElementById("profilePreview"),
+  stepProgressBar: document.getElementById("stepProgressBar"),
+  reviewName: document.getElementById("reviewName"),
+  reviewExperience: document.getElementById("reviewExperience"),
+  reviewPairing: document.getElementById("reviewPairing"),
+  reviewRisk: document.getElementById("reviewRisk"),
+  reviewInterests: document.getElementById("reviewInterests"),
   backButton: document.getElementById("backButton"),
   nextButton: document.getElementById("nextButton"),
   matchCard: document.getElementById("matchCard"),
@@ -179,9 +185,12 @@ const els = {
   passButton: document.getElementById("passButton"),
   pairButton: document.getElementById("pairButton"),
   matchList: document.getElementById("matchList"),
-  capturedPayload: document.getElementById("capturedPayload"),
-  exportButton: document.getElementById("exportButton"),
   resetButton: document.getElementById("resetButton"),
+  kpiPairs: document.getElementById("kpiPairs"),
+  kpiPasses: document.getElementById("kpiPasses"),
+  kpiHitRate: document.getElementById("kpiHitRate"),
+  kpiRemaining: document.getElementById("kpiRemaining"),
+  toast: document.getElementById("toast"),
 };
 
 function init() {
@@ -223,16 +232,15 @@ function bindEvents() {
     state.pairingMode = target.dataset.pairingMode;
     Array.from(els.pairingModeChoices.children).forEach((child) => child.classList.remove("active"));
     target.classList.add("active");
-    updateProfilePreview();
+    updateReview();
   });
 
-  els.riskTolerance.addEventListener("input", updateProfilePreview);
-  els.displayName.addEventListener("input", updateProfilePreview);
-  els.experience.addEventListener("change", updateProfilePreview);
+  els.riskTolerance.addEventListener("input", updateReview);
+  els.displayName.addEventListener("input", updateReview);
+  els.experience.addEventListener("change", updateReview);
 
   els.passButton.addEventListener("click", () => handleSwipe("pass"));
   els.pairButton.addEventListener("click", () => handleSwipe("pair"));
-  els.exportButton.addEventListener("click", exportOnboardingPayload);
   els.resetButton.addEventListener("click", resetAll);
 
   document.addEventListener("keydown", (event) => {
@@ -252,9 +260,10 @@ function renderStep() {
   });
 
   els.stepLabel.textContent = `Step ${state.step + 1} of 4`;
+  els.stepProgressBar.style.width = `${((state.step + 1) / 4) * 100}%`;
   els.backButton.disabled = state.step === 0;
   els.nextButton.textContent = state.step === 3 ? "Start matching" : "Next";
-  updateProfilePreview();
+  updateReview();
 }
 
 function goBack() {
@@ -303,9 +312,19 @@ function buildProfile() {
   };
 }
 
-function updateProfilePreview() {
+function updateReview() {
   const preview = buildProfile();
-  els.profilePreview.textContent = JSON.stringify(preview, null, 2);
+  els.reviewName.textContent = preview.displayName || "Not set";
+  els.reviewExperience.textContent = labelizeExperience(preview.experience);
+  els.reviewPairing.textContent = prettyPairingMode(preview.pairingMode);
+  els.reviewRisk.textContent = labelizeRisk(preview.riskTolerance);
+  els.reviewInterests.innerHTML = "";
+  preview.interests.forEach((interest) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = interest;
+    els.reviewInterests.appendChild(chip);
+  });
 }
 
 function finalizeOnboarding() {
@@ -325,7 +344,7 @@ function initializeMatching() {
   renderSummary();
   renderCard();
   renderMatches();
-  renderCapturedPayload();
+  renderKpis();
 }
 
 function buildDeck(profile) {
@@ -398,6 +417,7 @@ function renderCard() {
   const card = state.deck[state.index];
   const remaining = Math.max(state.deck.length - state.index, 0);
   els.statusLine.textContent = `${remaining} cards left · ${state.matches.length} matches`;
+  els.kpiRemaining.textContent = String(remaining);
 
   if (!card) {
     els.matchCard.innerHTML = `
@@ -415,6 +435,7 @@ function renderCard() {
   els.matchCard.innerHTML = `
     <h3>${card.market.prompt}</h3>
     <p><strong>${card.candidate.name}</strong> · ${card.candidate.style}</p>
+    <p>${matchingNarrative(card)}</p>
     <div class="match-meta">
       <span>Candidate side: <strong>${card.market.side}</strong> (${card.market.confidence}%)</span>
       <span>Your side: <strong>${card.userSide}</strong></span>
@@ -433,7 +454,10 @@ function handleSwipe(action) {
   const card = state.deck[state.index];
   if (!card) return;
 
-  if (action === "pair") {
+  if (action === "pass") {
+    state.passes += 1;
+    toast("Card passed. Next candidate loaded.");
+  } else if (action === "pair") {
     const matched = isReciprocalMatch(card);
     if (matched) {
       const match = {
@@ -449,10 +473,14 @@ function handleSwipe(action) {
       state.matches.unshift(match);
       localStorage.setItem(STORAGE_MATCHES_KEY, JSON.stringify(state.matches));
       renderMatches();
+      toast(`Mutual pair with ${card.candidate.name}! Trade ticket created.`);
+    } else {
+      toast(`${card.candidate.name} did not reciprocate this round.`);
     }
   }
 
   state.index += 1;
+  renderKpis();
   renderCard();
 }
 
@@ -467,7 +495,7 @@ function isReciprocalMatch(card) {
 function renderMatches() {
   els.matchList.innerHTML = "";
   if (state.matches.length === 0) {
-    els.matchList.innerHTML = "<li><small>No successful pairs yet. Swipe right to pair.</small></li>";
+    els.matchList.innerHTML = "<li><small>No successful pairs yet. Swipe right to create one.</small></li>";
     return;
   }
 
@@ -477,20 +505,19 @@ function renderMatches() {
       <strong>${match.candidateName}</strong>
       <div>${match.prompt}</div>
       <small>${match.sides}</small><br />
-      <small>Stake band: ${match.stakeBand} · Compatibility: ${match.compatibility}%</small><br />
+      <small>Recommended stake: ${match.stakeBand} · Compatibility: ${match.compatibility}%</small><br />
       <small>Shared interests: ${match.sharedInterests.join(", ")}</small>
     `;
     els.matchList.appendChild(li);
   });
 }
 
-function renderCapturedPayload() {
-  const payload = {
-    profile: state.profile,
-    successfulPairs: state.matches.length,
-    interestsCaptured: state.profile.interests,
-  };
-  els.capturedPayload.textContent = JSON.stringify(payload, null, 2);
+function renderKpis() {
+  const actions = state.matches.length + state.passes;
+  const hitRate = actions ? Math.round((state.matches.length / actions) * 100) : 0;
+  els.kpiPairs.textContent = String(state.matches.length);
+  els.kpiPasses.textContent = String(state.passes);
+  els.kpiHitRate.textContent = `${hitRate}%`;
 }
 
 function suggestStakeBand(riskTolerance, confidence) {
@@ -503,22 +530,6 @@ function prettyPairingMode(mode) {
   if (mode === "opposite") return "Opposite conviction";
   if (mode === "same") return "Same-side syndicate";
   return "Hybrid";
-}
-
-function exportOnboardingPayload() {
-  if (!state.profile) return;
-  const payload = {
-    profile: state.profile,
-    matches: state.matches,
-    exportedAt: new Date().toISOString(),
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "pulsematch-onboarding.json";
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 function hydrateFromStorage() {
@@ -558,6 +569,7 @@ function hydrateFromStorage() {
     }
 
     initializeMatching();
+    toast(`Welcome back, ${profile.displayName}. Your desk is ready.`);
   } catch {
     localStorage.removeItem(STORAGE_PROFILE_KEY);
   }
@@ -581,6 +593,35 @@ function deterministicFloat(seedText) {
 function intersection(a, b) {
   const bSet = new Set(b);
   return a.filter((item) => bSet.has(item));
+}
+
+function matchingNarrative(card) {
+  const base =
+    card.userSide === card.market.side
+      ? "You are aligned for a syndicate-style position."
+      : "You are naturally opposite, ideal for a balanced counterparty setup.";
+  return `${base} Shared context: ${card.sharedInterests.join(", ")}.`;
+}
+
+function labelizeExperience(level) {
+  if (level === "new") return "New to markets";
+  if (level === "expert") return "Power user";
+  return "Intermediate";
+}
+
+function labelizeRisk(level) {
+  if (Number(level) === 1) return "Conservative";
+  if (Number(level) === 3) return "Aggressive";
+  return "Balanced";
+}
+
+let toastTimer = null;
+function toast(message) {
+  if (!els.toast) return;
+  els.toast.textContent = message;
+  els.toast.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => els.toast.classList.add("hidden"), 1900);
 }
 
 init();
