@@ -132,6 +132,9 @@
           <button class="market-tab" type="button" data-market-tab="positions" role="tab">
             My Positions
           </button>
+          <button class="market-tab" type="button" data-market-tab="groups" role="tab">
+            Trusted Groups
+          </button>
         </div>
 
         <section id="feedTabPanel" class="tab-panel">
@@ -194,6 +197,46 @@
             </div>
             <ul id="positionsList" class="positions-list"></ul>
           </section>
+        </section>
+
+        <section id="groupsTabPanel" class="tab-panel hidden">
+          <div class="groups-layout">
+            <section class="panel">
+              <div class="panel-title">
+                <h2>Trusted Interest Groups</h2>
+                <p id="groupsSummary">0 active groups</p>
+              </div>
+              <div id="trustedGroupsGrid" class="groups-grid"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-title">
+                <h2>Group Market Desk</h2>
+                <p id="groupDeskLabel">Select a group</p>
+              </div>
+
+              <label for="groupMarketSelect">Market</label>
+              <select id="groupMarketSelect"></select>
+
+              <label for="groupStakeInput">Stake amount ($)</label>
+              <input id="groupStakeInput" type="number" min="10" step="10" value="100" />
+
+              <label for="groupConfidenceInput">Conviction (probability %)</label>
+              <input id="groupConfidenceInput" type="range" min="51" max="90" step="1" value="62" />
+              <div class="range-labels">
+                <span>Moderate</span>
+                <span>Strong</span>
+                <span>High conviction</span>
+              </div>
+
+              <div class="swipe-actions">
+                <button id="tradeYesButton" type="button">Trade YES</button>
+                <button id="tradeNoButton" type="button" class="ghost">Trade NO</button>
+              </div>
+
+              <ul id="groupTradesList" class="positions-list"></ul>
+            </section>
+          </div>
         </section>
       </section>
     </main>
