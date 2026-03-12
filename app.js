@@ -357,6 +357,8 @@ const els = {
   sendInviteButton: document.getElementById("sendInviteButton"),
   pendingInvitesList: document.getElementById("pendingInvitesList"),
   groupMembersList: document.getElementById("groupMembersList"),
+  socialGraphSummary: document.getElementById("socialGraphSummary"),
+  socialGraphList: document.getElementById("socialGraphList"),
   createMarketQuestion: document.getElementById("createMarketQuestion"),
   createMarketCloseDate: document.getElementById("createMarketCloseDate"),
   createMarketButton: document.getElementById("createMarketButton"),
@@ -651,13 +653,16 @@ function ensureGroupConfig(group) {
       pendingInvites: [],
       customMarkets: [],
       forecastsByMarket: {},
+      socialLinks: [],
     };
+    state.groupConfigs[group.id].socialLinks = buildInitialSocialLinks(group.id, state.groupConfigs[group.id].members);
     return;
   }
 
   if (!Array.isArray(existing.members)) existing.members = [];
   if (!Array.isArray(existing.pendingInvites)) existing.pendingInvites = [];
   if (!Array.isArray(existing.customMarkets)) existing.customMarkets = [];
+  if (!Array.isArray(existing.socialLinks)) existing.socialLinks = [];
   if (!existing.forecastsByMarket || typeof existing.forecastsByMarket !== "object") {
     existing.forecastsByMarket = {};
   }
@@ -675,6 +680,8 @@ function ensureGroupConfig(group) {
     existing.members[ownerIndex].name = ownerName;
     existing.members[ownerIndex].status = "active";
   }
+
+  ensureSocialLinksForMembers(group.id);
 }
 
 function buildFoundingMembers(group) {
@@ -718,6 +725,109 @@ function currentUserIsActiveMember(groupId) {
   const profileName = state.profile?.displayName;
   if (!profileName) return false;
   return activeMembersForGroup(groupId).some((member) => member.name === profileName);
+}
+
+function averageMemberVis(groupId) {
+  const members = activeMembersForGroup(groupId);
+  if (members.length === 0) return 0;
+  return Math.round(members.reduce((sum, member) => sum + member.reputation, 0) / members.length);
+}
+
+function resolveMemberName(groupId, memberId) {
+  const config = getGroupConfig(groupId);
+  const member = config?.members?.find((item) => item.id === memberId);
+  return member?.name || "Unknown";
+}
+
+function buildInitialSocialLinks(groupId, members) {
+  const active = members.filter((member) => member.status === "active");
+  if (active.length <= 1) return [];
+  const owner = active.find((member) => member.role === "owner") || active[0];
+  const links = [];
+  active.forEach((member, idx) => {
+    if (member.id === owner.id) return;
+    links.push({
+      id: `${groupId}-link-owner-${idx}`,
+      source: owner.id,
+      target: member.id,
+      strength: 54 + Math.round(deterministicFloat(`${groupId}-${owner.id}-${member.id}`) * 20),
+      lastInteractionAt: new Date().toISOString(),
+    });
+  });
+  if (active.length >= 3) {
+    links.push({
+      id: `${groupId}-link-peer`,
+      source: active[1].id,
+      target: active[2].id,
+      strength: 49 + Math.round(deterministicFloat(`${groupId}-${active[1].id}-${active[2].id}`) * 18),
+      lastInteractionAt: new Date().toISOString(),
+    });
+  }
+  return links;
+}
+
+function ensureSocialLinksForMembers(groupId) {
+  const config = getGroupConfig(groupId);
+  if (!config) return;
+  const active = activeMembersForGroup(groupId);
+  const activeIds = new Set(active.map((member) => member.id));
+  config.socialLinks = config.socialLinks.filter(
+    (link) => activeIds.has(link.source) && activeIds.has(link.target)
+  );
+  if (active.length <= 1) return;
+  const owner = active.find((member) => member.role === "owner") || active[0];
+  active.forEach((member) => {
+    if (member.id === owner.id) return;
+    const exists = config.socialLinks.some(
+      (link) =>
+        (link.source === owner.id && link.target === member.id) ||
+        (link.source === member.id && link.target === owner.id)
+    );
+    if (!exists) {
+      config.socialLinks.push({
+        id: `${groupId}-link-${owner.id}-${member.id}`,
+        source: owner.id,
+        target: member.id,
+        strength: 52 + Math.round(deterministicFloat(`${groupId}-${owner.id}-${member.id}`) * 18),
+        lastInteractionAt: new Date().toISOString(),
+      });
+    }
+  });
+}
+
+function adjustMemberVis(groupId, memberName, delta) {
+  const config = getGroupConfig(groupId);
+  if (!config) return;
+  const member = config.members.find((item) => item.name === memberName && item.status === "active");
+  if (!member) return;
+  member.reputation = Math.round(clamp(member.reputation + delta, 20, 99));
+}
+
+function reinforceSocialLink(groupId, memberAName, memberBName, delta = 2) {
+  if (!memberAName || !memberBName || memberAName === memberBName) return;
+  const config = getGroupConfig(groupId);
+  if (!config) return;
+  const memberA = config.members.find((item) => item.name === memberAName && item.status === "active");
+  const memberB = config.members.find((item) => item.name === memberBName && item.status === "active");
+  if (!memberA || !memberB) return;
+
+  let link = config.socialLinks.find(
+    (item) =>
+      (item.source === memberA.id && item.target === memberB.id) ||
+      (item.source === memberB.id && item.target === memberA.id)
+  );
+  if (!link) {
+    link = {
+      id: `${groupId}-link-${memberA.id}-${memberB.id}`,
+      source: memberA.id,
+      target: memberB.id,
+      strength: 50,
+      lastInteractionAt: new Date().toISOString(),
+    };
+    config.socialLinks.push(link);
+  }
+  link.strength = round2(clamp(link.strength + delta, 30, 99));
+  link.lastInteractionAt = new Date().toISOString();
 }
 
 function buildDeck(profile) {
@@ -1018,12 +1128,13 @@ function renderTrustedGroups() {
       <div class="group-meta">
         <span>${config?.inviteOnly ? "Invite-only" : "Open group"}</span>
         <span>Governance: ${config?.governancePolicy || "owner-approved"}</span>
-        <span>Intelligence score: ${rep.score}</span>
+        <span>Circle intelligence score: ${rep.score}</span>
+        <span>Average member VIS: ${rep.visAverage}</span>
         <span>Accuracy: ${rep.accuracy}%</span>
         <span>Settled calls: ${rep.settled}</span>
         <span>Open trades: ${openTrades}</span>
         <span>Your rep tier: ${rep.tier}</span>
-        <span>${rep.verified ? "Verified analyst" : "Analyst in training"}</span>
+        <span>${rep.verified ? "Verified intelligence circle" : "Intelligence score building"}</span>
       </div>
     `;
     els.trustedGroupsGrid.appendChild(card);
@@ -1036,15 +1147,17 @@ function computeGroupReputation(groupId) {
   );
   const wins = settled.filter((trade) => trade.status === "won").length;
   const accuracy = settled.length ? Math.round((wins / settled.length) * 100) : 0;
+  const visAverage = averageMemberVis(groupId);
 
-  let score = 50;
+  let tradeScore = 50;
   settled.forEach((trade) => {
     const convictionFactor = 1 + Math.abs(trade.entryProbability - 50) / 40;
-    score += trade.status === "won" ? 6 + convictionFactor * 4 : -(4 + convictionFactor * 4);
+    tradeScore += trade.status === "won" ? 6 + convictionFactor * 4 : -(4 + convictionFactor * 4);
   });
-  score = Math.round(clamp(score, 0, 100));
+  tradeScore = Math.round(clamp(tradeScore, 0, 100));
+  const score = Math.round(clamp(tradeScore * 0.65 + visAverage * 0.35, 0, 100));
 
-  const verified = settled.length >= 3 && accuracy >= 60 && score >= 55;
+  const verified = settled.length >= 3 && accuracy >= 60 && score >= 55 && visAverage >= 55;
   let tier = "Unrated";
   if (verified && score >= 75 && accuracy >= 68) {
     tier = "Elite";
@@ -1054,7 +1167,7 @@ function computeGroupReputation(groupId) {
     tier = "Building";
   }
 
-  return { score, accuracy, settled: settled.length, verified, tier };
+  return { score, accuracy, settled: settled.length, verified, tier, visAverage, tradeScore };
 }
 
 function onGroupCardClick(event) {
@@ -1077,9 +1190,11 @@ function renderGovernancePanel() {
   const group = getSelectedGroup();
   els.pendingInvitesList.innerHTML = "";
   els.groupMembersList.innerHTML = "";
+  els.socialGraphList.innerHTML = "";
 
   if (!group) {
     els.governanceSummary.textContent = "Select a group to manage membership.";
+    els.socialGraphSummary.textContent = "No graph data yet.";
     els.sendInviteButton.disabled = true;
     return;
   }
@@ -1121,11 +1236,48 @@ function renderGovernancePanel() {
       <div class="position-head">
         <div>
           <strong>${member.name}</strong>
-          <small class="member-role">${member.role} · intelligence ${member.reputation}</small>
+          <small class="member-role">${member.role} · VIS ${member.reputation}</small>
         </div>
       </div>
     `;
     els.groupMembersList.appendChild(li);
+  });
+
+  renderSocialGraph(group.id);
+}
+
+function renderSocialGraph(groupId) {
+  const config = getGroupConfig(groupId);
+  if (!config) {
+    els.socialGraphSummary.textContent = "No graph data yet.";
+    return;
+  }
+  ensureSocialLinksForMembers(groupId);
+  const activeMembers = activeMembersForGroup(groupId);
+  const links = (config.socialLinks || []).slice().sort((a, b) => b.strength - a.strength);
+  const visAvg = averageMemberVis(groupId);
+  els.socialGraphSummary.textContent = `${activeMembers.length} members · ${links.length} trust links · average VIS ${visAvg}`;
+
+  if (links.length === 0) {
+    els.socialGraphList.innerHTML = "<li class='position-item'><small>Invite and approve members to build social graph links.</small></li>";
+    return;
+  }
+
+  links.slice(0, 8).forEach((link) => {
+    const source = resolveMemberName(groupId, link.source);
+    const target = resolveMemberName(groupId, link.target);
+    const li = document.createElement("li");
+    li.className = "position-item";
+    li.innerHTML = `
+      <div class="position-head">
+        <strong>${source} ↔ ${target}</strong>
+        <span class="status-badge status-building">Trust ${Math.round(link.strength)}</span>
+      </div>
+      <div class="position-meta">
+        <span>Last interaction: ${formatShortDate(link.lastInteractionAt)}</span>
+      </div>
+    `;
+    els.socialGraphList.appendChild(li);
   });
 }
 
@@ -1188,6 +1340,7 @@ function resolveInviteAction(inviteId, action) {
       status: "active",
       reputation: 54 + Math.round(deterministicFloat(`${group.id}-${invite.name}`) * 24),
     });
+    reinforceSocialLink(group.id, state.profile.displayName, invite.name, 2.5);
     toast(`${invite.name} approved. Membership updated by governance.`);
   } else {
     toast(`${invite.name} invite rejected by governance.`);
@@ -1224,7 +1377,7 @@ function renderGroupMarketDesk() {
   const canOperate = currentUserIsActiveMember(group.id);
   const rep = computeGroupReputation(group.id);
   els.groupDeskLabel.textContent = `${group.name} · ${group.interest}`;
-  els.groupReputationSummary.textContent = `Intelligence ${rep.score}/100 · Accuracy ${rep.accuracy}% · Tier ${rep.tier} · ${
+  els.groupReputationSummary.textContent = `Circle score ${rep.score}/100 · VIS avg ${rep.visAverage} · Accuracy ${rep.accuracy}% · Tier ${rep.tier} · ${
     group.inviteOnly ? "Invite-only group" : "Open group"
   }`;
   group.markets.forEach((market) => {
@@ -1332,8 +1485,16 @@ function submitForecast() {
     createdAt: new Date().toISOString(),
   };
   upsertMarketForecast(group.id, forecast);
+  adjustMemberVis(group.id, state.profile.displayName, 0.8);
+  activeMembersForGroup(group.id)
+    .filter((member) => member.name !== state.profile.displayName)
+    .slice(0, 2)
+    .forEach((peer) => reinforceSocialLink(group.id, state.profile.displayName, peer.name, 0.9));
   persistGroupConfigs();
   renderForecasts();
+  renderGovernancePanel();
+  renderTrustedGroups();
+  renderGroupMarketDesk();
   renderHappyFlow();
   toast("Forecast submitted to collaborative desk.");
 }
@@ -1368,10 +1529,15 @@ function simulatePeerForecasts() {
       source: "peer",
       createdAt: new Date().toISOString(),
     });
+    reinforceSocialLink(group.id, state.profile.displayName, peer.name, 0.8);
   }
 
+  adjustMemberVis(group.id, state.profile.displayName, 0.6);
   persistGroupConfigs();
   renderForecasts();
+  renderGovernancePanel();
+  renderTrustedGroups();
+  renderGroupMarketDesk();
   renderHappyFlow();
   toast("Peer forecasts added for collaborative consensus.");
 }
@@ -1496,6 +1662,7 @@ function placeGroupTrade(side) {
     id: `gt-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     groupId: group.id,
     groupName: group.name,
+    trader: state.profile.displayName,
     marketId: market.id,
     prompt: market.prompt,
     side,
@@ -2116,10 +2283,20 @@ function settleGroupTrade(tradeId, marketOutcome) {
   state.account.realizedPnl = round2(state.account.realizedPnl + trade.pnl);
   state.account.tradesSettled += 1;
 
+  // Member VIS (Verified Intelligence Score) updates from realized prediction outcomes.
+  const visDelta = trade.status === "won" ? 3 + (trade.entryProbability - 50) / 20 : -(2 + (trade.entryProbability - 50) / 25);
+  adjustMemberVis(trade.groupId, trade.trader || state.profile.displayName, visDelta);
+  activeMembersForGroup(trade.groupId)
+    .filter((member) => member.name !== (trade.trader || state.profile.displayName))
+    .slice(0, 2)
+    .forEach((peer) => reinforceSocialLink(trade.groupId, trade.trader || state.profile.displayName, peer.name, 1.5));
+
   persistGroupTrades();
+  persistGroupConfigs();
   persistAccount();
   renderGroupTrades();
   renderTrustedGroups();
+  renderGovernancePanel();
   renderGroupMarketDesk();
   renderAccount();
   renderHappyFlow();
@@ -2250,6 +2427,10 @@ function renderHappyFlow() {
     const activeMembers = (config.members || []).filter((member) => member.status === "active").length;
     return sum + Math.max(0, activeMembers - 3);
   }, 0);
+  const sociallyVerifiedGroups = state.trustedGroups.filter((group) => {
+    const rep = computeGroupReputation(group.id);
+    return rep.verified && rep.visAverage >= 60;
+  }).length;
   const publishedUgcCount = state.creatorQueue.filter((item) => item.status === "published").length;
   const exchangeTradeCount = Math.max(0, state.account.tradesPlaced - state.groupTrades.length);
 
@@ -2266,6 +2447,10 @@ function renderHappyFlow() {
     {
       done: state.groupTrades.some((trade) => trade.status !== "open"),
       action: "Settle one group trade to verify intelligence reputation",
+    },
+    {
+      done: sociallyVerifiedGroups > 0,
+      action: "Reach verified social intelligence score in one trusted circle",
     },
   ];
   const completed = steps.filter((step) => step.done).length;

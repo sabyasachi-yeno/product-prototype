@@ -8,6 +8,8 @@ Prediction-market prototype with dating-style matching, trusted interest groups,
 - Swipe-style match feed (buttons, keyboard, and drag gesture)
 - Persistent **My Positions** lifecycle
 - **Trusted Groups** trading desk scoped to matching interests
+- **Trusted-circle social graph** showing member trust links per interest group
+- **Verified Intelligence Score (VIS)** for members and circles inside each interest group
 - Invite-only trusted groups with membership governance (invite/approve/reject)
 - Real market creation inside trusted groups
 - Collaborative forecasting workflow with consensus view

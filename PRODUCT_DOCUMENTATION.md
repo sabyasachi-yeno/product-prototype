@@ -4,12 +4,19 @@
 
 PulseMatch is a prediction-market product prototype where discovery and counterpart matching works like a dating app, then transitions into trading inside trusted interest groups.
 
+Fundamental use case:
+
+- **prediction market + social graph + reputation score within interest groups**
+- where each trusted circle tracks member-level and group-level verified intelligence over time.
+
 The current build includes:
 
 - onboarding with interest-group capture,
 - swipe-style match feed,
 - position lifecycle management,
 - trusted-group market desk,
+- trusted-circle social graph,
+- member-level Verified Intelligence Score (VIS),
 - invite-only membership governance,
 - group market creation,
 - collaborative forecasting and consensus,
@@ -169,6 +176,13 @@ Governance and collaboration flow:
 3. Create custom market question
 4. Submit forecast and rationale
 5. Review consensus probability and spread
+
+Social graph + VIS flow:
+
+1. Members are connected by trust links inside each interest circle.
+2. Forecasting and outcomes reinforce/dampen trust links.
+3. Member VIS updates based on prediction quality.
+4. Group-level intelligence score blends market accuracy with social VIS quality.
 
 ## 5.5 Prediction Exchange (Polymarket-style)
 
