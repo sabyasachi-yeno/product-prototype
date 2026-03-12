@@ -1,5 +1,6 @@
 const STORAGE_PROFILE_KEY = "pulsematch.profile.v1";
 const STORAGE_MATCHES_KEY = "pulsematch.matches.v1";
+const STORAGE_POSITIONS_KEY = "pulsematch.positions.v1";
 
 const INTEREST_GROUPS = [
   "US Politics",
@@ -157,6 +158,14 @@ const state = {
   index: 0,
   matches: [],
   passes: 0,
+  positions: [],
+  activeTab: "feed",
+  drag: {
+    active: false,
+    pointerId: null,
+    startX: 0,
+    deltaX: 0,
+  },
 };
 
 const els = {
@@ -185,19 +194,24 @@ const els = {
   passButton: document.getElementById("passButton"),
   pairButton: document.getElementById("pairButton"),
   matchList: document.getElementById("matchList"),
+  positionsList: document.getElementById("positionsList"),
+  positionsSummary: document.getElementById("positionsSummary"),
   resetButton: document.getElementById("resetButton"),
   kpiPairs: document.getElementById("kpiPairs"),
   kpiPasses: document.getElementById("kpiPasses"),
   kpiHitRate: document.getElementById("kpiHitRate"),
   kpiRemaining: document.getElementById("kpiRemaining"),
+  marketTabs: document.querySelectorAll(".market-tab"),
+  feedTabPanel: document.getElementById("feedTabPanel"),
+  positionsTabPanel: document.getElementById("positionsTabPanel"),
   toast: document.getElementById("toast"),
 };
 
 function init() {
   renderInterestGrid();
   bindEvents();
-  hydrateFromStorage();
   renderStep();
+  hydrateFromStorage();
 }
 
 function renderInterestGrid() {
@@ -216,7 +230,7 @@ function renderInterestGrid() {
         state.selectedInterests.add(interest);
         button.classList.add("active");
       }
-      updateProfilePreview();
+      updateReview();
     });
     els.interestGrid.appendChild(button);
   });
@@ -242,13 +256,20 @@ function bindEvents() {
   els.passButton.addEventListener("click", () => handleSwipe("pass"));
   els.pairButton.addEventListener("click", () => handleSwipe("pair"));
   els.resetButton.addEventListener("click", resetAll);
+  els.positionsList.addEventListener("click", onPositionActionClick);
+  els.marketTabs.forEach((tab) => {
+    tab.addEventListener("click", () => setActiveTab(tab.dataset.marketTab));
+  });
 
   document.addEventListener("keydown", (event) => {
     if (els.marketSection.classList.contains("hidden")) return;
+    if (state.activeTab !== "feed") return;
     if (!state.deck[state.index]) return;
     if (event.key === "ArrowLeft") handleSwipe("pass");
     if (event.key === "ArrowRight") handleSwipe("pair");
   });
+
+  initSwipeGestures();
 }
 
 function renderStep() {
@@ -330,7 +351,8 @@ function updateReview() {
 function finalizeOnboarding() {
   state.profile = buildProfile();
   localStorage.setItem(STORAGE_PROFILE_KEY, JSON.stringify(state.profile));
-  localStorage.setItem(STORAGE_MATCHES_KEY, JSON.stringify(state.matches));
+  persistMatches();
+  persistPositions();
   initializeMatching();
 }
 
@@ -344,7 +366,9 @@ function initializeMatching() {
   renderSummary();
   renderCard();
   renderMatches();
+  renderPositions();
   renderKpis();
+  setActiveTab(state.activeTab);
 }
 
 function buildDeck(profile) {
@@ -418,11 +442,12 @@ function renderCard() {
   const remaining = Math.max(state.deck.length - state.index, 0);
   els.statusLine.textContent = `${remaining} cards left · ${state.matches.length} matches`;
   els.kpiRemaining.textContent = String(remaining);
+  resetCardVisualState();
 
   if (!card) {
     els.matchCard.innerHTML = `
       <p class="empty-card">No more candidates in this batch.</p>
-      <p class="empty-card">You can reset onboarding to test another matching profile.</p>
+      <p class="empty-card">Switch to My Positions to manage open tickets.</p>
     `;
     els.passButton.disabled = true;
     els.pairButton.disabled = true;
@@ -433,6 +458,8 @@ function renderCard() {
   els.pairButton.disabled = false;
 
   els.matchCard.innerHTML = `
+    <span class="swipe-indicator left">PASS</span>
+    <span class="swipe-indicator right">PAIR</span>
     <h3>${card.market.prompt}</h3>
     <p><strong>${card.candidate.name}</strong> · ${card.candidate.style}</p>
     <p>${matchingNarrative(card)}</p>
@@ -471,9 +498,11 @@ function handleSwipe(action) {
         createdAt: new Date().toISOString(),
       };
       state.matches.unshift(match);
-      localStorage.setItem(STORAGE_MATCHES_KEY, JSON.stringify(state.matches));
+      persistMatches();
+      addPositionFromMatch(card, match);
       renderMatches();
-      toast(`Mutual pair with ${card.candidate.name}! Trade ticket created.`);
+      renderPositions();
+      toast(`Mutual pair with ${card.candidate.name}! Position added to My Positions.`);
     } else {
       toast(`${card.candidate.name} did not reciprocate this round.`);
     }
@@ -512,6 +541,119 @@ function renderMatches() {
   });
 }
 
+function addPositionFromMatch(card, match) {
+  const position = {
+    id: `p-${match.id}`,
+    marketPrompt: match.prompt,
+    counterparty: match.candidateName,
+    side: card.userSide,
+    candidateSide: card.market.side,
+    entryProbability: deriveEntryProbability(card),
+    stakeBand: match.stakeBand,
+    sharedInterests: match.sharedInterests,
+    status: "open",
+    createdAt: new Date().toISOString(),
+    settledAt: null,
+    pnl: null,
+  };
+  state.positions.unshift(position);
+  persistPositions();
+}
+
+function renderPositions() {
+  const openPositions = state.positions.filter((position) => position.status === "open").length;
+  const settledPositions = state.positions.length - openPositions;
+  els.positionsSummary.textContent =
+    state.positions.length === 0
+      ? "No open positions yet"
+      : `${openPositions} open · ${settledPositions} settled`;
+
+  els.positionsList.innerHTML = "";
+  if (state.positions.length === 0) {
+    els.positionsList.innerHTML = "<li class='position-item'><small>No positions yet. Pair a match to create one.</small></li>";
+    return;
+  }
+
+  state.positions.forEach((position) => {
+    const li = document.createElement("li");
+    li.className = "position-item";
+    const badgeClass = `status-${position.status}`;
+    const prettyStatus = position.status === "open" ? "Open" : position.status === "won" ? "Won" : "Lost";
+    const pnlLabel = position.pnl === null ? "Unrealized" : formatPnl(position.pnl);
+
+    li.innerHTML = `
+      <div class="position-head">
+        <div>
+          <strong>${position.marketPrompt}</strong>
+          <small>${state.profile.displayName}: ${position.side} vs ${position.counterparty}: ${position.candidateSide}</small>
+        </div>
+        <span class="status-badge ${badgeClass}">${prettyStatus}</span>
+      </div>
+      <div class="position-meta">
+        <span>Entry: ${position.entryProbability}%</span>
+        <span>Stake: ${position.stakeBand}</span>
+        <span>PnL: ${pnlLabel}</span>
+        <span>Themes: ${position.sharedInterests.join(", ")}</span>
+      </div>
+      ${
+        position.status === "open"
+          ? `<div class="position-actions">
+              <button class="tiny" type="button" data-position-id="${position.id}" data-outcome="won">Settle Won</button>
+              <button class="tiny ghost" type="button" data-position-id="${position.id}" data-outcome="lost">Settle Lost</button>
+            </div>`
+          : ""
+      }
+    `;
+    els.positionsList.appendChild(li);
+  });
+}
+
+function onPositionActionClick(event) {
+  const button = event.target.closest("button[data-position-id][data-outcome]");
+  if (!button) return;
+  settlePosition(button.dataset.positionId, button.dataset.outcome);
+}
+
+function settlePosition(positionId, outcome) {
+  const position = state.positions.find((item) => item.id === positionId);
+  if (!position || position.status !== "open") return;
+
+  position.status = outcome === "won" ? "won" : "lost";
+  position.settledAt = new Date().toISOString();
+  position.pnl = calculatePositionPnl(position, position.status);
+  persistPositions();
+  renderPositions();
+  toast(`Position settled as ${position.status.toUpperCase()} (${formatPnl(position.pnl)}).`);
+}
+
+function calculatePositionPnl(position, status) {
+  const stake = midpointStake(position.stakeBand);
+  const entry = position.entryProbability / 100;
+  if (status === "won") return round2(stake * (1 - entry));
+  return round2(-stake * entry);
+}
+
+function midpointStake(stakeBand) {
+  const numbers = stakeBand.match(/\d+/g) || [];
+  if (numbers.length === 0) return 100;
+  if (numbers.length === 1) return Number(numbers[0]);
+  return (Number(numbers[0]) + Number(numbers[1])) / 2;
+}
+
+function round2(value) {
+  return Math.round(value * 100) / 100;
+}
+
+function formatPnl(value) {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}$${Math.abs(value).toFixed(2)}`;
+}
+
+function deriveEntryProbability(card) {
+  const value = card.userSide === card.market.side ? card.market.confidence : 100 - card.market.confidence;
+  return Math.max(5, Math.min(95, value));
+}
+
 function renderKpis() {
   const actions = state.matches.length + state.passes;
   const hitRate = actions ? Math.round((state.matches.length / actions) * 100) : 0;
@@ -526,6 +668,16 @@ function suggestStakeBand(riskTolerance, confidence) {
   return baseByRisk[riskTolerance] ?? "$60-$180";
 }
 
+function setActiveTab(tab) {
+  state.activeTab = tab === "positions" ? "positions" : "feed";
+  els.marketTabs.forEach((button) => {
+    button.classList.toggle("active", button.dataset.marketTab === state.activeTab);
+  });
+
+  els.feedTabPanel.classList.toggle("hidden", state.activeTab !== "feed");
+  els.positionsTabPanel.classList.toggle("hidden", state.activeTab !== "positions");
+}
+
 function prettyPairingMode(mode) {
   if (mode === "opposite") return "Opposite conviction";
   if (mode === "same") return "Same-side syndicate";
@@ -535,12 +687,21 @@ function prettyPairingMode(mode) {
 function hydrateFromStorage() {
   const rawProfile = localStorage.getItem(STORAGE_PROFILE_KEY);
   const rawMatches = localStorage.getItem(STORAGE_MATCHES_KEY);
+  const rawPositions = localStorage.getItem(STORAGE_POSITIONS_KEY);
 
   if (rawMatches) {
     try {
       state.matches = JSON.parse(rawMatches);
     } catch {
       state.matches = [];
+    }
+  }
+
+  if (rawPositions) {
+    try {
+      state.positions = JSON.parse(rawPositions);
+    } catch {
+      state.positions = [];
     }
   }
 
@@ -575,10 +736,108 @@ function hydrateFromStorage() {
   }
 }
 
+function persistMatches() {
+  localStorage.setItem(STORAGE_MATCHES_KEY, JSON.stringify(state.matches));
+}
+
+function persistPositions() {
+  localStorage.setItem(STORAGE_POSITIONS_KEY, JSON.stringify(state.positions));
+}
+
 function resetAll() {
   localStorage.removeItem(STORAGE_PROFILE_KEY);
   localStorage.removeItem(STORAGE_MATCHES_KEY);
+  localStorage.removeItem(STORAGE_POSITIONS_KEY);
   window.location.reload();
+}
+
+function initSwipeGestures() {
+  const card = els.matchCard;
+  card.addEventListener("pointerdown", onSwipePointerDown);
+  card.addEventListener("pointermove", onSwipePointerMove);
+  card.addEventListener("pointerup", onSwipePointerUp);
+  card.addEventListener("pointercancel", onSwipePointerUp);
+}
+
+function onSwipePointerDown(event) {
+  if (state.activeTab !== "feed") return;
+  if (els.marketSection.classList.contains("hidden")) return;
+  if (!state.deck[state.index]) return;
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+
+  state.drag.active = true;
+  state.drag.pointerId = event.pointerId;
+  state.drag.startX = event.clientX;
+  state.drag.deltaX = 0;
+  els.matchCard.classList.add("dragging");
+  els.matchCard.setPointerCapture(event.pointerId);
+}
+
+function onSwipePointerMove(event) {
+  if (!state.drag.active || event.pointerId !== state.drag.pointerId) return;
+  state.drag.deltaX = event.clientX - state.drag.startX;
+  applyCardDrag(state.drag.deltaX);
+}
+
+function onSwipePointerUp(event) {
+  if (!state.drag.active || event.pointerId !== state.drag.pointerId) return;
+
+  const deltaX = state.drag.deltaX;
+  const threshold = Math.min(120, els.matchCard.clientWidth * 0.28);
+  state.drag.active = false;
+  state.drag.pointerId = null;
+  state.drag.deltaX = 0;
+  els.matchCard.classList.remove("dragging");
+  if (els.matchCard.hasPointerCapture(event.pointerId)) {
+    els.matchCard.releasePointerCapture(event.pointerId);
+  }
+
+  if (Math.abs(deltaX) >= threshold) {
+    const action = deltaX > 0 ? "pair" : "pass";
+    animateCardOut(action, () => {
+      handleSwipe(action);
+      resetCardVisualState();
+    });
+    return;
+  }
+
+  resetCardVisualState();
+}
+
+function applyCardDrag(deltaX) {
+  const rotation = clamp(deltaX / 20, -16, 16);
+  els.matchCard.style.transform = `translateX(${deltaX}px) rotate(${rotation}deg)`;
+  const strength = Math.min(Math.abs(deltaX) / 120, 1);
+  const leftIndicator = els.matchCard.querySelector(".swipe-indicator.left");
+  const rightIndicator = els.matchCard.querySelector(".swipe-indicator.right");
+  if (leftIndicator) leftIndicator.style.opacity = deltaX < 0 ? String(strength) : "0";
+  if (rightIndicator) rightIndicator.style.opacity = deltaX > 0 ? String(strength) : "0";
+}
+
+function animateCardOut(action, onComplete) {
+  const direction = action === "pair" ? 1 : -1;
+  const moveX = direction * Math.max(window.innerWidth * 0.7, 360);
+  els.matchCard.style.transition = "transform 190ms ease, opacity 190ms ease";
+  els.matchCard.style.transform = `translateX(${moveX}px) rotate(${direction * 16}deg)`;
+  els.matchCard.style.opacity = "0.12";
+  setTimeout(() => {
+    els.matchCard.style.opacity = "1";
+    onComplete();
+  }, 195);
+}
+
+function resetCardVisualState() {
+  els.matchCard.style.transition = "";
+  els.matchCard.style.transform = "";
+  els.matchCard.style.opacity = "";
+  const indicators = els.matchCard.querySelectorAll(".swipe-indicator");
+  indicators.forEach((indicator) => {
+    indicator.style.opacity = "0";
+  });
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
 }
 
 function deterministicFloat(seedText) {

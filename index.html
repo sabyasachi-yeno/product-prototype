@@ -125,55 +125,76 @@
       </section>
 
       <section id="marketSection" class="market-shell hidden">
-        <div class="kpi-row">
-          <article class="kpi">
-            <small>Pairs created</small>
-            <strong id="kpiPairs">0</strong>
-          </article>
-          <article class="kpi">
-            <small>Passes</small>
-            <strong id="kpiPasses">0</strong>
-          </article>
-          <article class="kpi">
-            <small>Pair hit-rate</small>
-            <strong id="kpiHitRate">0%</strong>
-          </article>
-          <article class="kpi">
-            <small>Cards remaining</small>
-            <strong id="kpiRemaining">0</strong>
-          </article>
+        <div class="market-tabs" role="tablist" aria-label="Market workspace tabs">
+          <button class="market-tab active" type="button" data-market-tab="feed" role="tab">
+            Match Feed
+          </button>
+          <button class="market-tab" type="button" data-market-tab="positions" role="tab">
+            My Positions
+          </button>
         </div>
 
-        <div class="dashboard">
-          <section class="panel match-feed">
-            <div class="panel-title">
-              <h2>Live Match Feed</h2>
-              <p id="statusLine">0 cards left</p>
-            </div>
-            <article id="matchCard" class="match-card">
-              <p class="empty-card">Loading feed...</p>
+        <section id="feedTabPanel" class="tab-panel">
+          <div class="kpi-row">
+            <article class="kpi">
+              <small>Pairs created</small>
+              <strong id="kpiPairs">0</strong>
             </article>
-            <div class="swipe-actions">
-              <button id="passButton" class="ghost">Pass</button>
-              <button id="pairButton">Pair</button>
+            <article class="kpi">
+              <small>Passes</small>
+              <strong id="kpiPasses">0</strong>
+            </article>
+            <article class="kpi">
+              <small>Pair hit-rate</small>
+              <strong id="kpiHitRate">0%</strong>
+            </article>
+            <article class="kpi">
+              <small>Cards remaining</small>
+              <strong id="kpiRemaining">0</strong>
+            </article>
+          </div>
+
+          <div class="dashboard">
+            <section class="panel match-feed">
+              <div class="panel-title">
+                <h2>Live Match Feed</h2>
+                <p id="statusLine">0 cards left</p>
+              </div>
+              <article id="matchCard" class="match-card">
+                <p class="empty-card">Loading feed...</p>
+              </article>
+              <div class="swipe-actions">
+                <button id="passButton" class="ghost">Pass</button>
+                <button id="pairButton">Pair</button>
+              </div>
+            </section>
+
+            <aside class="side-column">
+              <section class="panel">
+                <h3 class="panel-mini-title">My strategy profile</h3>
+                <p class="meta-label">Pairing mode</p>
+                <strong id="summaryPairingMode">-</strong>
+                <p class="meta-label">Interest groups</p>
+                <div id="summaryInterests" class="chip-row"></div>
+              </section>
+
+              <section class="panel">
+                <h3 class="panel-mini-title">Successful pairings</h3>
+                <ul id="matchList" class="match-list"></ul>
+              </section>
+            </aside>
+          </div>
+        </section>
+
+        <section id="positionsTabPanel" class="tab-panel hidden">
+          <section class="panel">
+            <div class="panel-title">
+              <h2>My Positions</h2>
+              <p id="positionsSummary">No open positions yet</p>
             </div>
+            <ul id="positionsList" class="positions-list"></ul>
           </section>
-
-          <aside class="side-column">
-            <section class="panel">
-              <h3 class="panel-mini-title">My strategy profile</h3>
-              <p class="meta-label">Pairing mode</p>
-              <strong id="summaryPairingMode">-</strong>
-              <p class="meta-label">Interest groups</p>
-              <div id="summaryInterests" class="chip-row"></div>
-            </section>
-
-            <section class="panel">
-              <h3 class="panel-mini-title">Successful pairings</h3>
-              <ul id="matchList" class="match-list"></ul>
-            </section>
-          </aside>
-        </div>
+        </section>
       </section>
     </main>
 
