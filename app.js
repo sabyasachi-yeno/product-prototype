@@ -954,8 +954,8 @@ function renderGroupTrades() {
       ${
         trade.status === "open"
           ? `<div class="position-actions">
-              <button class="tiny" type="button" data-group-trade-id="${trade.id}" data-market-outcome="YES">Settle YES</button>
-              <button class="tiny ghost" type="button" data-group-trade-id="${trade.id}" data-market-outcome="NO">Settle NO</button>
+              <button class="tiny" type="button" data-group-trade-id="${trade.id}" data-market-outcome="YES">Resolve Outcome: YES</button>
+              <button class="tiny ghost" type="button" data-group-trade-id="${trade.id}" data-market-outcome="NO">Resolve Outcome: NO</button>
             </div>`
           : ""
       }
