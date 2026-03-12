@@ -2,6 +2,7 @@ const STORAGE_PROFILE_KEY = "pulsematch.profile.v1";
 const STORAGE_MATCHES_KEY = "pulsematch.matches.v1";
 const STORAGE_POSITIONS_KEY = "pulsematch.positions.v1";
 const STORAGE_GROUP_TRADES_KEY = "pulsematch.groupTrades.v1";
+const STORAGE_ACCOUNT_KEY = "pulsematch.account.v1";
 
 const INTEREST_GROUPS = [
   "US Politics",
@@ -217,6 +218,26 @@ const GROUP_MARKET_TEMPLATES = {
   ],
 };
 
+function buildDefaultAccount() {
+  return {
+    cash: 5000,
+    realizedPnl: 0,
+    tradesPlaced: 0,
+    tradesSettled: 0,
+  };
+}
+
+function ensureAccountShape(account) {
+  const fallback = buildDefaultAccount();
+  if (!account || typeof account !== "object") return fallback;
+  return {
+    cash: Number.isFinite(account.cash) ? account.cash : fallback.cash,
+    realizedPnl: Number.isFinite(account.realizedPnl) ? account.realizedPnl : fallback.realizedPnl,
+    tradesPlaced: Number.isFinite(account.tradesPlaced) ? account.tradesPlaced : fallback.tradesPlaced,
+    tradesSettled: Number.isFinite(account.tradesSettled) ? account.tradesSettled : fallback.tradesSettled,
+  };
+}
+
 const state = {
   step: 0,
   selectedInterests: new Set(),
@@ -229,6 +250,7 @@ const state = {
   positions: [],
   trustedGroups: [],
   groupTrades: [],
+  account: buildDefaultAccount(),
   selectedGroupId: null,
   activeTab: "feed",
   drag: {
@@ -270,12 +292,19 @@ const els = {
   groupsSummary: document.getElementById("groupsSummary"),
   trustedGroupsGrid: document.getElementById("trustedGroupsGrid"),
   groupDeskLabel: document.getElementById("groupDeskLabel"),
+  groupReputationSummary: document.getElementById("groupReputationSummary"),
   groupMarketSelect: document.getElementById("groupMarketSelect"),
   groupStakeInput: document.getElementById("groupStakeInput"),
   groupConfidenceInput: document.getElementById("groupConfidenceInput"),
   tradeYesButton: document.getElementById("tradeYesButton"),
   tradeNoButton: document.getElementById("tradeNoButton"),
   groupTradesList: document.getElementById("groupTradesList"),
+  accountCash: document.getElementById("accountCash"),
+  accountOpenExposure: document.getElementById("accountOpenExposure"),
+  accountRealizedPnl: document.getElementById("accountRealizedPnl"),
+  flowCompletionLabel: document.getElementById("flowCompletionLabel"),
+  flowProgressBar: document.getElementById("flowProgressBar"),
+  flowNextAction: document.getElementById("flowNextAction"),
   resetButton: document.getElementById("resetButton"),
   kpiPairs: document.getElementById("kpiPairs"),
   kpiPasses: document.getElementById("kpiPasses"),
@@ -440,6 +469,7 @@ function finalizeOnboarding() {
   persistMatches();
   persistPositions();
   persistGroupTrades();
+  persistAccount();
   initializeMatching();
 }
 
@@ -461,6 +491,8 @@ function initializeMatching() {
   renderTrustedGroups();
   renderGroupMarketDesk();
   renderGroupTrades();
+  renderAccount();
+  renderHappyFlow();
   renderKpis();
   setActiveTab(state.activeTab);
 }
@@ -597,6 +629,7 @@ function handleSwipe(action) {
       renderMatches();
       renderPositions();
       toast(`Mutual pair with ${card.candidate.name}! Position added to My Positions.`);
+      renderHappyFlow();
     } else {
       toast(`${card.candidate.name} did not reciprocate this round.`);
     }
@@ -605,6 +638,7 @@ function handleSwipe(action) {
   state.index += 1;
   renderKpis();
   renderCard();
+  renderHappyFlow();
 }
 
 function isReciprocalMatch(card) {
@@ -761,6 +795,8 @@ function renderTrustedGroups() {
         <span>Accuracy: ${rep.accuracy}%</span>
         <span>Settled calls: ${rep.settled}</span>
         <span>Open trades: ${openTrades}</span>
+        <span>Your rep tier: ${rep.tier}</span>
+        <span>${rep.verified ? "Verified analyst" : "Analyst in training"}</span>
       </div>
     `;
     els.trustedGroupsGrid.appendChild(card);
@@ -782,7 +818,16 @@ function computeGroupReputation(groupId) {
   score = Math.round(clamp(score, 0, 100));
 
   const verified = settled.length >= 3 && accuracy >= 60 && score >= 55;
-  return { score, accuracy, settled: settled.length, verified };
+  let tier = "Unrated";
+  if (verified && score >= 75 && accuracy >= 68) {
+    tier = "Elite";
+  } else if (verified) {
+    tier = "Verified";
+  } else if (settled.length >= 1) {
+    tier = "Building";
+  }
+
+  return { score, accuracy, settled: settled.length, verified, tier };
 }
 
 function onGroupCardClick(event) {
@@ -804,12 +849,15 @@ function renderGroupMarketDesk() {
 
   if (!group) {
     els.groupDeskLabel.textContent = "Select a group";
+    els.groupReputationSummary.textContent = "No reputation data yet";
     els.tradeYesButton.disabled = true;
     els.tradeNoButton.disabled = true;
     return;
   }
 
+  const rep = computeGroupReputation(group.id);
   els.groupDeskLabel.textContent = `${group.name} · ${group.interest}`;
+  els.groupReputationSummary.textContent = `Intelligence ${rep.score}/100 · Accuracy ${rep.accuracy}% · Tier ${rep.tier}`;
   group.markets.forEach((market) => {
     const option = document.createElement("option");
     option.value = market.id;
@@ -832,6 +880,10 @@ function placeGroupTrade(side) {
     toast("Stake must be at least $10.");
     return;
   }
+  if (stake > state.account.cash) {
+    toast("Insufficient trading cash for this stake. Lower stake or settle open trades.");
+    return;
+  }
 
   const conviction = Number(els.groupConfidenceInput.value);
   const trade = {
@@ -850,10 +902,16 @@ function placeGroupTrade(side) {
     pnl: null,
   };
 
+  state.account.cash = round2(state.account.cash - trade.stake);
+  state.account.tradesPlaced += 1;
   state.groupTrades.unshift(trade);
   persistGroupTrades();
+  persistAccount();
   renderGroupTrades();
   renderTrustedGroups();
+  renderGroupMarketDesk();
+  renderAccount();
+  renderHappyFlow();
   toast(`${side} trade placed in ${group.interest} group.`);
 }
 
@@ -920,10 +978,19 @@ function settleGroupTrade(tradeId, marketOutcome) {
   trade.status = trade.side === marketOutcome ? "won" : "lost";
   trade.settledAt = new Date().toISOString();
   trade.pnl = calculateGroupTradePnl(trade);
+  if (trade.status === "won") {
+    state.account.cash = round2(state.account.cash + trade.stake + trade.pnl);
+  }
+  state.account.realizedPnl = round2(state.account.realizedPnl + trade.pnl);
+  state.account.tradesSettled += 1;
 
   persistGroupTrades();
+  persistAccount();
   renderGroupTrades();
   renderTrustedGroups();
+  renderGroupMarketDesk();
+  renderAccount();
+  renderHappyFlow();
 
   const rep = computeGroupReputation(trade.groupId);
   toast(
@@ -932,9 +999,11 @@ function settleGroupTrade(tradeId, marketOutcome) {
 }
 
 function calculateGroupTradePnl(trade) {
-  const entry = trade.entryProbability / 100;
-  if (trade.status === "won") return round2(trade.stake * (1 - entry));
-  return round2(-trade.stake * entry);
+  if (trade.status === "won") {
+    const rewardMultiplier = 0.25 + (100 - trade.entryProbability) / 100;
+    return round2(trade.stake * rewardMultiplier);
+  }
+  return round2(-trade.stake);
 }
 
 function getSelectedGroup() {
@@ -968,6 +1037,7 @@ function settlePosition(positionId, outcome) {
   persistPositions();
   renderPositions();
   toast(`Position settled as ${position.status.toUpperCase()} (${formatPnl(position.pnl)}).`);
+  renderHappyFlow();
 }
 
 function calculatePositionPnl(position, status) {
@@ -1012,6 +1082,38 @@ function renderKpis() {
   els.kpiHitRate.textContent = `${hitRate}%`;
 }
 
+function calculateOpenExposure() {
+  return state.groupTrades
+    .filter((trade) => trade.status === "open")
+    .reduce((sum, trade) => sum + trade.stake, 0);
+}
+
+function renderAccount() {
+  const exposure = calculateOpenExposure();
+  els.accountCash.textContent = `$${state.account.cash.toFixed(2)}`;
+  els.accountOpenExposure.textContent = `$${exposure.toFixed(2)}`;
+  els.accountRealizedPnl.textContent = formatPnl(state.account.realizedPnl);
+}
+
+function renderHappyFlow() {
+  const steps = [
+    { done: Boolean(state.profile), action: "Complete onboarding profile" },
+    { done: state.matches.length > 0, action: "Create your first mutual pair in Match Feed" },
+    { done: state.positions.length > 0, action: "Open a position from a successful pair" },
+    { done: state.groupTrades.length > 0, action: "Place first trade in Trusted Groups" },
+    {
+      done: state.groupTrades.some((trade) => trade.status !== "open"),
+      action: "Settle one group trade to verify intelligence reputation",
+    },
+  ];
+  const completed = steps.filter((step) => step.done).length;
+  const percent = Math.round((completed / steps.length) * 100);
+  els.flowCompletionLabel.textContent = `${percent}%`;
+  els.flowProgressBar.style.width = `${percent}%`;
+  const next = steps.find((step) => !step.done);
+  els.flowNextAction.textContent = next ? `Next: ${next.action}` : "Complete: happy trading flow achieved";
+}
+
 function suggestStakeBand(riskTolerance, confidence) {
   const baseByRisk = { 1: "$20-$60", 2: "$60-$180", 3: "$180-$500" };
   if (confidence >= 68 && riskTolerance > 1) return "$220-$650";
@@ -1046,6 +1148,7 @@ function hydrateFromStorage() {
   const rawMatches = localStorage.getItem(STORAGE_MATCHES_KEY);
   const rawPositions = localStorage.getItem(STORAGE_POSITIONS_KEY);
   const rawGroupTrades = localStorage.getItem(STORAGE_GROUP_TRADES_KEY);
+  const rawAccount = localStorage.getItem(STORAGE_ACCOUNT_KEY);
 
   if (rawMatches) {
     try {
@@ -1068,6 +1171,14 @@ function hydrateFromStorage() {
       state.groupTrades = JSON.parse(rawGroupTrades);
     } catch {
       state.groupTrades = [];
+    }
+  }
+
+  if (rawAccount) {
+    try {
+      state.account = ensureAccountShape(JSON.parse(rawAccount));
+    } catch {
+      state.account = buildDefaultAccount();
     }
   }
 
@@ -1114,11 +1225,16 @@ function persistGroupTrades() {
   localStorage.setItem(STORAGE_GROUP_TRADES_KEY, JSON.stringify(state.groupTrades));
 }
 
+function persistAccount() {
+  localStorage.setItem(STORAGE_ACCOUNT_KEY, JSON.stringify(state.account));
+}
+
 function resetAll() {
   localStorage.removeItem(STORAGE_PROFILE_KEY);
   localStorage.removeItem(STORAGE_MATCHES_KEY);
   localStorage.removeItem(STORAGE_POSITIONS_KEY);
   localStorage.removeItem(STORAGE_GROUP_TRADES_KEY);
+  localStorage.removeItem(STORAGE_ACCOUNT_KEY);
   window.location.reload();
 }
 

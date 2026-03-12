@@ -137,6 +137,29 @@
           </button>
         </div>
 
+        <div class="account-strip">
+          <article class="kpi">
+            <small>Trading cash</small>
+            <strong id="accountCash">$0.00</strong>
+          </article>
+          <article class="kpi">
+            <small>Open exposure</small>
+            <strong id="accountOpenExposure">$0.00</strong>
+          </article>
+          <article class="kpi">
+            <small>Realized PnL</small>
+            <strong id="accountRealizedPnl">$0.00</strong>
+          </article>
+          <article class="kpi flow-kpi">
+            <small>Happy flow completion</small>
+            <strong id="flowCompletionLabel">0%</strong>
+            <div class="progress-track thin">
+              <div id="flowProgressBar" class="progress-fill"></div>
+            </div>
+            <p id="flowNextAction" class="meta-label">Complete onboarding to start</p>
+          </article>
+        </div>
+
         <section id="feedTabPanel" class="tab-panel">
           <div class="kpi-row">
             <article class="kpi">
@@ -214,6 +237,7 @@
                 <h2>Group Market Desk</h2>
                 <p id="groupDeskLabel">Select a group</p>
               </div>
+              <p id="groupReputationSummary" class="meta-label">No reputation data yet</p>
 
               <label for="groupMarketSelect">Market</label>
               <select id="groupMarketSelect"></select>
