@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PulseMatch</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Prediction Market Prototype</p>
+          <h1>PulseMatch</h1>
+          <p class="subtitle">
+            Swipe into markets with counterparties who share your interests and complement your
+            conviction.
+          </p>
+        </div>
+      </header>
+
+      <section id="onboardingSection" class="panel">
+        <div class="panel-title">
+          <h2>Onboarding</h2>
+          <p id="stepLabel">Step 1 of 4</p>
+        </div>
+
+        <div class="stepper">
+          <span class="step-dot active" data-step-dot="0"></span>
+          <span class="step-dot" data-step-dot="1"></span>
+          <span class="step-dot" data-step-dot="2"></span>
+          <span class="step-dot" data-step-dot="3"></span>
+        </div>
+
+        <form id="onboardingForm">
+          <div class="step" data-step="0">
+            <label for="displayName">Display name</label>
+            <input id="displayName" name="displayName" type="text" placeholder="Ari Markets" required />
+
+            <label for="experience">Prediction market experience</label>
+            <select id="experience" name="experience">
+              <option value="new">New to markets</option>
+              <option value="intermediate" selected>Intermediate</option>
+              <option value="expert">Power user</option>
+            </select>
+          </div>
+
+          <div class="step hidden" data-step="1">
+            <p class="group-label">Pick your interest groups (choose at least 3)</p>
+            <div id="interestGrid" class="interest-grid" role="group" aria-label="Interest groups"></div>
+          </div>
+
+          <div class="step hidden" data-step="2">
+            <p class="group-label">How should matches be paired?</p>
+            <div class="choices" id="pairingModeChoices">
+              <button type="button" class="choice active" data-pairing-mode="opposite">
+                Opposite conviction
+              </button>
+              <button type="button" class="choice" data-pairing-mode="same">
+                Same-side syndicate
+              </button>
+              <button type="button" class="choice" data-pairing-mode="hybrid">Hybrid</button>
+            </div>
+
+            <label for="riskTolerance">Risk comfort</label>
+            <input type="range" id="riskTolerance" name="riskTolerance" min="1" max="3" step="1" value="2" />
+            <div class="range-labels">
+              <span>Conservative</span>
+              <span>Balanced</span>
+              <span>Aggressive</span>
+            </div>
+          </div>
+
+          <div class="step hidden" data-step="3">
+            <p class="group-label">Review your matching profile</p>
+            <pre id="profilePreview" class="preview"></pre>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" id="backButton" class="ghost" disabled>Back</button>
+            <button type="button" id="nextButton">Next</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="marketSection" class="panel hidden">
+        <div class="panel-title">
+          <h2>Match Feed</h2>
+          <p id="statusLine">0 cards left</p>
+        </div>
+
+        <div class="profile-summary">
+          <div>
+            <p class="meta-label">Pairing mode</p>
+            <strong id="summaryPairingMode">-</strong>
+          </div>
+          <div>
+            <p class="meta-label">Interest groups</p>
+            <div id="summaryInterests" class="chip-row"></div>
+          </div>
+        </div>
+
+        <article id="matchCard" class="match-card">
+          <p class="empty-card">Loading feed...</p>
+        </article>
+
+        <div class="swipe-actions">
+          <button id="passButton" class="ghost">Pass</button>
+          <button id="pairButton">Pair</button>
+        </div>
+
+        <div class="match-grid">
+          <section class="subpanel">
+            <div class="subpanel-head">
+              <h3>Successful pairs</h3>
+              <button id="exportButton" class="tiny">Export onboarding JSON</button>
+            </div>
+            <ul id="matchList" class="match-list"></ul>
+          </section>
+
+          <section class="subpanel">
+            <h3>Captured onboarding payload</h3>
+            <pre id="capturedPayload" class="preview compact"></pre>
+            <button id="resetButton" class="tiny danger">Reset onboarding</button>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
