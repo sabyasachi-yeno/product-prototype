@@ -365,6 +365,23 @@ button.danger {
   gap: 0.8rem;
 }
 
+.group-subsection {
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.inline-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.inline-input-row input {
+  margin-bottom: 0;
+}
+
 .groups-grid {
   margin-top: 0.7rem;
   display: grid;
@@ -584,6 +601,10 @@ button.danger {
   gap: 0.65rem;
 }
 
+.positions-list.compact {
+  margin-top: 0.45rem;
+}
+
 .position-item {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -616,6 +637,11 @@ button.danger {
   display: flex;
   gap: 0.45rem;
   flex-wrap: wrap;
+}
+
+.member-role {
+  color: var(--muted);
+  font-size: 0.76rem;
 }
 
 .status-badge {
@@ -695,6 +721,10 @@ button.danger {
   .topbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .inline-input-row {
+    grid-template-columns: 1fr;
   }
 
   .review-grid,

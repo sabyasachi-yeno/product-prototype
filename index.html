@@ -230,6 +230,23 @@
                 <p id="groupsSummary">0 active groups</p>
               </div>
               <div id="trustedGroupsGrid" class="groups-grid"></div>
+
+              <div class="group-subsection">
+                <h3 class="panel-mini-title">Invite-only governance</h3>
+                <p id="governanceSummary" class="meta-label">Select a group to manage membership.</p>
+
+                <label for="inviteMemberInput">Invite member</label>
+                <div class="inline-input-row">
+                  <input id="inviteMemberInput" type="text" placeholder="Name or handle (e.g. Priya)" />
+                  <button id="sendInviteButton" type="button" class="tiny">Send Invite</button>
+                </div>
+
+                <p class="meta-label">Pending invites</p>
+                <ul id="pendingInvitesList" class="positions-list compact"></ul>
+
+                <p class="meta-label">Active members</p>
+                <ul id="groupMembersList" class="positions-list compact"></ul>
+              </div>
             </section>
 
             <section class="panel">
@@ -238,6 +255,19 @@
                 <p id="groupDeskLabel">Select a group</p>
               </div>
               <p id="groupReputationSummary" class="meta-label">No reputation data yet</p>
+
+              <div class="group-subsection">
+                <h3 class="panel-mini-title">Create market</h3>
+                <label for="createMarketQuestion">Question</label>
+                <input
+                  id="createMarketQuestion"
+                  type="text"
+                  placeholder="Will AI chip exports rise quarter-over-quarter?"
+                />
+                <label for="createMarketCloseDate">Close date</label>
+                <input id="createMarketCloseDate" type="date" />
+                <button id="createMarketButton" type="button" class="tiny">Create Market</button>
+              </div>
 
               <label for="groupMarketSelect">Market</label>
               <select id="groupMarketSelect"></select>
@@ -256,6 +286,26 @@
               <div class="swipe-actions">
                 <button id="tradeYesButton" type="button">Trade YES</button>
                 <button id="tradeNoButton" type="button" class="ghost">Trade NO</button>
+              </div>
+
+              <div class="group-subsection">
+                <h3 class="panel-mini-title">Collaborative forecasting</h3>
+                <p id="forecastConsensusSummary" class="meta-label">No forecasts yet for this market.</p>
+                <label for="forecastProbabilityInput">Your forecast probability (%)</label>
+                <input id="forecastProbabilityInput" type="range" min="1" max="99" step="1" value="60" />
+                <label for="forecastRationaleInput">Rationale</label>
+                <input
+                  id="forecastRationaleInput"
+                  type="text"
+                  placeholder="Brief reasoning behind your probability call"
+                />
+                <div class="swipe-actions">
+                  <button id="submitForecastButton" type="button" class="tiny">Submit Forecast</button>
+                  <button id="simulatePeersButton" type="button" class="tiny ghost">
+                    Simulate Peer Forecasts
+                  </button>
+                </div>
+                <ul id="forecastList" class="positions-list compact"></ul>
               </div>
 
               <ul id="groupTradesList" class="positions-list"></ul>

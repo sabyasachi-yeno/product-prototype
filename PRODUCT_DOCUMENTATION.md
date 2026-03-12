@@ -10,6 +10,9 @@ The current build includes:
 - swipe-style match feed,
 - position lifecycle management,
 - trusted-group market desk,
+- invite-only membership governance,
+- group market creation,
+- collaborative forecasting and consensus,
 - manual outcome resolution,
 - verified intelligence reputation per group,
 - portfolio/account state,
@@ -46,6 +49,9 @@ The current build includes:
 3. Mutual pair creates a position in "My Positions".
 4. User opens "Trusted Groups" tab:
    - selects an interest-aligned group,
+   - manages invite-only membership,
+   - creates or selects a group market,
+   - contributes collaborative forecast input,
    - chooses a market,
    - places YES/NO trade with stake + conviction.
 5. User resolves an outcome ("Resolve Outcome: YES/NO"):
@@ -135,8 +141,10 @@ Group generation:
 
 Each group has:
 
-- synthetic member count,
-- curated market templates,
+- invite-only governance configuration,
+- active members + pending invites,
+- curated + user-created markets,
+- collaborative forecasts and consensus,
 - local trade history.
 
 Trade flow:
@@ -147,6 +155,14 @@ Trade flow:
 4. Set conviction
 5. Trade YES or NO
 6. Resolve outcome: YES/NO
+
+Governance and collaboration flow:
+
+1. Invite candidate member
+2. Approve/reject through governance actions
+3. Create custom market question
+4. Submit forecast and rationale
+5. Review consensus probability and spread
 
 ## 5.5 Verified intelligence reputation
 
@@ -191,6 +207,7 @@ Keys:
 - `pulsematch.matches.v1`
 - `pulsematch.positions.v1`
 - `pulsematch.groupTrades.v1`
+- `pulsematch.groupConfigs.v1`
 - `pulsematch.account.v1`
 
 Notes:
@@ -263,10 +280,10 @@ Architectural style:
 
 1. External market/oracle connector for automatic resolution.
 2. Auth and user accounts with cloud persistence.
-3. Invite-only trusted groups and membership governance.
-4. Group leaderboards and calibration scoring.
-5. Anti-gaming safeguards for confidence misuse.
-6. Real market creation and collaborative forecasting workflows.
+3. Group leaderboards and calibration scoring.
+4. Anti-gaming safeguards for confidence misuse.
+5. Role-based permissions (owner/moderator/analyst) with policy rules.
+6. Forecast audit trails and confidence calibration analytics.
 
 ---
 

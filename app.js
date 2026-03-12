@@ -3,6 +3,7 @@ const STORAGE_MATCHES_KEY = "pulsematch.matches.v1";
 const STORAGE_POSITIONS_KEY = "pulsematch.positions.v1";
 const STORAGE_GROUP_TRADES_KEY = "pulsematch.groupTrades.v1";
 const STORAGE_ACCOUNT_KEY = "pulsematch.account.v1";
+const STORAGE_GROUP_CONFIGS_KEY = "pulsematch.groupConfigs.v1";
 
 const INTEREST_GROUPS = [
   "US Politics",
@@ -250,6 +251,7 @@ const state = {
   positions: [],
   trustedGroups: [],
   groupTrades: [],
+  groupConfigs: {},
   account: buildDefaultAccount(),
   selectedGroupId: null,
   activeTab: "feed",
@@ -293,9 +295,23 @@ const els = {
   trustedGroupsGrid: document.getElementById("trustedGroupsGrid"),
   groupDeskLabel: document.getElementById("groupDeskLabel"),
   groupReputationSummary: document.getElementById("groupReputationSummary"),
+  governanceSummary: document.getElementById("governanceSummary"),
+  inviteMemberInput: document.getElementById("inviteMemberInput"),
+  sendInviteButton: document.getElementById("sendInviteButton"),
+  pendingInvitesList: document.getElementById("pendingInvitesList"),
+  groupMembersList: document.getElementById("groupMembersList"),
+  createMarketQuestion: document.getElementById("createMarketQuestion"),
+  createMarketCloseDate: document.getElementById("createMarketCloseDate"),
+  createMarketButton: document.getElementById("createMarketButton"),
   groupMarketSelect: document.getElementById("groupMarketSelect"),
   groupStakeInput: document.getElementById("groupStakeInput"),
   groupConfidenceInput: document.getElementById("groupConfidenceInput"),
+  forecastProbabilityInput: document.getElementById("forecastProbabilityInput"),
+  forecastRationaleInput: document.getElementById("forecastRationaleInput"),
+  submitForecastButton: document.getElementById("submitForecastButton"),
+  simulatePeersButton: document.getElementById("simulatePeersButton"),
+  forecastConsensusSummary: document.getElementById("forecastConsensusSummary"),
+  forecastList: document.getElementById("forecastList"),
   tradeYesButton: document.getElementById("tradeYesButton"),
   tradeNoButton: document.getElementById("tradeNoButton"),
   groupTradesList: document.getElementById("groupTradesList"),
@@ -369,6 +385,11 @@ function bindEvents() {
   els.positionsList.addEventListener("click", onPositionActionClick);
   els.trustedGroupsGrid.addEventListener("click", onGroupCardClick);
   els.groupMarketSelect.addEventListener("change", onGroupMarketChange);
+  els.sendInviteButton.addEventListener("click", sendGroupInvite);
+  els.pendingInvitesList.addEventListener("click", onPendingInviteActionClick);
+  els.createMarketButton.addEventListener("click", createGroupMarket);
+  els.submitForecastButton.addEventListener("click", submitForecast);
+  els.simulatePeersButton.addEventListener("click", simulatePeerForecasts);
   els.tradeYesButton.addEventListener("click", () => placeGroupTrade("YES"));
   els.tradeNoButton.addEventListener("click", () => placeGroupTrade("NO"));
   els.groupTradesList.addEventListener("click", onGroupTradeActionClick);
@@ -469,6 +490,7 @@ function finalizeOnboarding() {
   persistMatches();
   persistPositions();
   persistGroupTrades();
+  persistGroupConfigs();
   persistAccount();
   initializeMatching();
 }
@@ -476,7 +498,7 @@ function finalizeOnboarding() {
 function initializeMatching() {
   state.deck = buildDeck(state.profile);
   state.index = 0;
-  state.trustedGroups = buildTrustedGroups(state.profile.interests);
+  refreshTrustedGroupsFromConfigs();
   if (!state.selectedGroupId || !state.trustedGroups.some((group) => group.id === state.selectedGroupId)) {
     state.selectedGroupId = state.trustedGroups[0]?.id ?? null;
   }
@@ -489,12 +511,112 @@ function initializeMatching() {
   renderMatches();
   renderPositions();
   renderTrustedGroups();
+  renderGovernancePanel();
   renderGroupMarketDesk();
+  renderForecasts();
   renderGroupTrades();
   renderAccount();
   renderHappyFlow();
   renderKpis();
   setActiveTab(state.activeTab);
+}
+
+function refreshTrustedGroupsFromConfigs() {
+  const baseGroups = buildTrustedGroups(state.profile.interests);
+  baseGroups.forEach((group) => ensureGroupConfig(group));
+  state.trustedGroups = baseGroups.map((group) => {
+    const config = getGroupConfig(group.id);
+    return {
+      ...group,
+      inviteOnly: config.inviteOnly,
+      markets: [...group.markets, ...(config.customMarkets || [])],
+      memberCount: activeMembersForGroup(group.id).length,
+    };
+  });
+  persistGroupConfigs();
+}
+
+function ensureGroupConfig(group) {
+  const ownerName = state.profile?.displayName || "Owner";
+  const existing = state.groupConfigs[group.id];
+  if (!existing) {
+    state.groupConfigs[group.id] = {
+      inviteOnly: true,
+      governancePolicy: "owner-approved",
+      members: [
+        { id: `owner-${slugify(ownerName)}`, name: ownerName, role: "owner", status: "active", reputation: 70 },
+        ...buildFoundingMembers(group),
+      ],
+      pendingInvites: [],
+      customMarkets: [],
+      forecastsByMarket: {},
+    };
+    return;
+  }
+
+  if (!Array.isArray(existing.members)) existing.members = [];
+  if (!Array.isArray(existing.pendingInvites)) existing.pendingInvites = [];
+  if (!Array.isArray(existing.customMarkets)) existing.customMarkets = [];
+  if (!existing.forecastsByMarket || typeof existing.forecastsByMarket !== "object") {
+    existing.forecastsByMarket = {};
+  }
+
+  const ownerIndex = existing.members.findIndex((member) => member.role === "owner");
+  if (ownerIndex === -1) {
+    existing.members.unshift({
+      id: `owner-${slugify(ownerName)}`,
+      name: ownerName,
+      role: "owner",
+      status: "active",
+      reputation: 70,
+    });
+  } else {
+    existing.members[ownerIndex].name = ownerName;
+    existing.members[ownerIndex].status = "active";
+  }
+}
+
+function buildFoundingMembers(group) {
+  const candidateNames = [
+    "Ava",
+    "Liam",
+    "Noah",
+    "Maya",
+    "Iris",
+    "Kian",
+    "Sora",
+    "Riya",
+    "Omar",
+    "Leah",
+    "Zane",
+    "Nora",
+  ];
+  const seed = Math.floor(deterministicFloat(group.id) * 1000);
+  const first = candidateNames[seed % candidateNames.length];
+  const second = candidateNames[(seed + 5) % candidateNames.length];
+  return [first, second].map((name, idx) => ({
+    id: `${group.id}-founder-${idx + 1}`,
+    name,
+    role: "member",
+    status: "active",
+    reputation: 58 + Math.round(deterministicFloat(`${group.id}-${name}`) * 20),
+  }));
+}
+
+function getGroupConfig(groupId) {
+  return state.groupConfigs[groupId] || null;
+}
+
+function activeMembersForGroup(groupId) {
+  const config = getGroupConfig(groupId);
+  if (!config) return [];
+  return config.members.filter((member) => member.status === "active");
+}
+
+function currentUserIsActiveMember(groupId) {
+  const profileName = state.profile?.displayName;
+  if (!profileName) return false;
+  return activeMembersForGroup(groupId).some((member) => member.name === profileName);
 }
 
 function buildDeck(profile) {
@@ -748,13 +870,13 @@ function buildTrustedGroups(interests) {
       prompt,
       closeDate: buildCloseDate(index, marketIndex),
     }));
-    const members = 120 + Math.round(deterministicFloat(id) * 420);
+    const communitySize = 120 + Math.round(deterministicFloat(id) * 420);
 
     return {
       id,
       interest,
       name: `${interest} Intelligence Circle`,
-      members,
+      communitySize,
       markets,
     };
   });
@@ -773,10 +895,12 @@ function renderTrustedGroups() {
   }
 
   groups.forEach((group) => {
+    const config = getGroupConfig(group.id);
     const rep = computeGroupReputation(group.id);
     const openTrades = state.groupTrades.filter(
       (trade) => trade.groupId === group.id && trade.status === "open"
     ).length;
+    const activeMembers = activeMembersForGroup(group.id);
     const card = document.createElement("article");
     card.className = `group-card ${state.selectedGroupId === group.id ? "active" : ""}`;
     card.dataset.groupId = group.id;
@@ -784,13 +908,15 @@ function renderTrustedGroups() {
       <div class="group-head">
         <div>
           <strong>${group.name}</strong>
-          <small>${group.members} members · ${group.interest}</small>
+          <small>${group.communitySize} community · ${activeMembers.length} active members · ${group.interest}</small>
         </div>
         <span class="status-badge ${rep.verified ? "status-verified" : "status-building"}">
           ${rep.verified ? "Verified Intel" : "Reputation Building"}
         </span>
       </div>
       <div class="group-meta">
+        <span>${config?.inviteOnly ? "Invite-only" : "Open group"}</span>
+        <span>Governance: ${config?.governancePolicy || "owner-approved"}</span>
         <span>Intelligence score: ${rep.score}</span>
         <span>Accuracy: ${rep.accuracy}%</span>
         <span>Settled calls: ${rep.settled}</span>
@@ -835,12 +961,145 @@ function onGroupCardClick(event) {
   if (!card) return;
   state.selectedGroupId = card.dataset.groupId;
   renderTrustedGroups();
+  renderGovernancePanel();
   renderGroupMarketDesk();
+  renderForecasts();
   renderGroupTrades();
 }
 
 function onGroupMarketChange() {
+  renderForecasts();
   renderGroupTrades();
+}
+
+function renderGovernancePanel() {
+  const group = getSelectedGroup();
+  els.pendingInvitesList.innerHTML = "";
+  els.groupMembersList.innerHTML = "";
+
+  if (!group) {
+    els.governanceSummary.textContent = "Select a group to manage membership.";
+    els.sendInviteButton.disabled = true;
+    return;
+  }
+
+  const config = getGroupConfig(group.id);
+  const activeMembers = activeMembersForGroup(group.id);
+  els.governanceSummary.textContent = `${config.inviteOnly ? "Invite-only" : "Open"} · ${
+    config.governancePolicy
+  } · ${activeMembers.length} active members · ${config.pendingInvites.length} pending invites`;
+  els.sendInviteButton.disabled = false;
+
+  if (config.pendingInvites.length === 0) {
+    els.pendingInvitesList.innerHTML =
+      "<li class='position-item'><small>No pending invites. Invite-only governance is active.</small></li>";
+  } else {
+    config.pendingInvites.forEach((invite) => {
+      const li = document.createElement("li");
+      li.className = "position-item";
+      li.innerHTML = `
+        <div class="position-head">
+          <div>
+            <strong>${invite.name}</strong>
+            <small>Invited by ${invite.invitedBy} on ${formatShortDate(invite.createdAt)}</small>
+          </div>
+        </div>
+        <div class="position-actions">
+          <button class="tiny" type="button" data-invite-id="${invite.id}" data-invite-action="approve">Approve Invite</button>
+          <button class="tiny ghost" type="button" data-invite-id="${invite.id}" data-invite-action="reject">Reject Invite</button>
+        </div>
+      `;
+      els.pendingInvitesList.appendChild(li);
+    });
+  }
+
+  activeMembers.forEach((member) => {
+    const li = document.createElement("li");
+    li.className = "position-item";
+    li.innerHTML = `
+      <div class="position-head">
+        <div>
+          <strong>${member.name}</strong>
+          <small class="member-role">${member.role} · intelligence ${member.reputation}</small>
+        </div>
+      </div>
+    `;
+    els.groupMembersList.appendChild(li);
+  });
+}
+
+function sendGroupInvite() {
+  const group = getSelectedGroup();
+  if (!group) return;
+  if (!currentUserIsActiveMember(group.id)) {
+    toast("Only active members can send invites in this group.");
+    return;
+  }
+
+  const candidateName = els.inviteMemberInput.value.trim();
+  if (candidateName.length < 2) {
+    toast("Enter a valid member name to send an invite.");
+    return;
+  }
+
+  const config = getGroupConfig(group.id);
+  const normalized = candidateName.toLowerCase();
+  const alreadyMember = config.members.some((member) => member.name.toLowerCase() === normalized);
+  const alreadyPending = config.pendingInvites.some((invite) => invite.name.toLowerCase() === normalized);
+  if (alreadyMember || alreadyPending) {
+    toast("This member is already active or has a pending invite.");
+    return;
+  }
+
+  config.pendingInvites.unshift({
+    id: `inv-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    name: candidateName,
+    invitedBy: state.profile.displayName,
+    createdAt: new Date().toISOString(),
+  });
+
+  els.inviteMemberInput.value = "";
+  persistGroupConfigs();
+  renderGovernancePanel();
+  toast(`Invite sent to ${candidateName}. Awaiting governance decision.`);
+}
+
+function onPendingInviteActionClick(event) {
+  const button = event.target.closest("button[data-invite-id][data-invite-action]");
+  if (!button) return;
+  resolveInviteAction(button.dataset.inviteId, button.dataset.inviteAction);
+}
+
+function resolveInviteAction(inviteId, action) {
+  const group = getSelectedGroup();
+  if (!group) return;
+  const config = getGroupConfig(group.id);
+  const inviteIndex = config.pendingInvites.findIndex((invite) => invite.id === inviteId);
+  if (inviteIndex === -1) return;
+
+  const invite = config.pendingInvites[inviteIndex];
+  config.pendingInvites.splice(inviteIndex, 1);
+  if (action === "approve") {
+    config.members.push({
+      id: `member-${group.id}-${slugify(invite.name)}`,
+      name: invite.name,
+      role: "member",
+      status: "active",
+      reputation: 54 + Math.round(deterministicFloat(`${group.id}-${invite.name}`) * 24),
+    });
+    toast(`${invite.name} approved. Membership updated by governance.`);
+  } else {
+    toast(`${invite.name} invite rejected by governance.`);
+  }
+
+  refreshTrustedGroupsFromConfigs();
+  persistGroupConfigs();
+  renderTrustedGroups();
+  renderGovernancePanel();
+  renderGroupMarketDesk();
+  renderForecasts();
+  renderGroupTrades();
+  renderHappyFlow();
 }
 
 function renderGroupMarketDesk() {
@@ -850,14 +1109,20 @@ function renderGroupMarketDesk() {
   if (!group) {
     els.groupDeskLabel.textContent = "Select a group";
     els.groupReputationSummary.textContent = "No reputation data yet";
+    els.createMarketButton.disabled = true;
     els.tradeYesButton.disabled = true;
     els.tradeNoButton.disabled = true;
+    els.submitForecastButton.disabled = true;
+    els.simulatePeersButton.disabled = true;
     return;
   }
 
+  const canOperate = currentUserIsActiveMember(group.id);
   const rep = computeGroupReputation(group.id);
   els.groupDeskLabel.textContent = `${group.name} · ${group.interest}`;
-  els.groupReputationSummary.textContent = `Intelligence ${rep.score}/100 · Accuracy ${rep.accuracy}% · Tier ${rep.tier}`;
+  els.groupReputationSummary.textContent = `Intelligence ${rep.score}/100 · Accuracy ${rep.accuracy}% · Tier ${rep.tier} · ${
+    group.inviteOnly ? "Invite-only group" : "Open group"
+  }`;
   group.markets.forEach((market) => {
     const option = document.createElement("option");
     option.value = market.id;
@@ -865,13 +1130,232 @@ function renderGroupMarketDesk() {
     els.groupMarketSelect.appendChild(option);
   });
 
-  els.tradeYesButton.disabled = false;
-  els.tradeNoButton.disabled = false;
+  if (!els.createMarketCloseDate.value) {
+    const defaultDate = new Date();
+    defaultDate.setDate(defaultDate.getDate() + 21);
+    els.createMarketCloseDate.value = defaultDate.toISOString().slice(0, 10);
+  }
+
+  els.createMarketButton.disabled = !canOperate;
+  els.tradeYesButton.disabled = !canOperate;
+  els.tradeNoButton.disabled = !canOperate;
+  els.submitForecastButton.disabled = !canOperate;
+  els.simulatePeersButton.disabled = !canOperate;
+}
+
+function createGroupMarket() {
+  const group = getSelectedGroup();
+  if (!group) return;
+  if (!currentUserIsActiveMember(group.id)) {
+    toast("Only approved group members can create markets.");
+    return;
+  }
+
+  const question = els.createMarketQuestion.value.trim();
+  const closeDate = els.createMarketCloseDate.value;
+  if (question.length < 12) {
+    toast("Market question should be at least 12 characters.");
+    return;
+  }
+  if (!closeDate) {
+    toast("Please select a market close date.");
+    return;
+  }
+
+  const config = getGroupConfig(group.id);
+  const newMarket = {
+    id: `${group.id}-custom-${Date.now()}`,
+    prompt: question,
+    closeDate,
+    createdBy: state.profile.displayName,
+    isCustom: true,
+  };
+  config.customMarkets.unshift(newMarket);
+
+  els.createMarketQuestion.value = "";
+  refreshTrustedGroupsFromConfigs();
+  persistGroupConfigs();
+  renderTrustedGroups();
+  renderGroupMarketDesk();
+  els.groupMarketSelect.value = newMarket.id;
+  renderForecasts();
+  renderGroupTrades();
+  renderHappyFlow();
+  toast("Market created and published to this trusted group.");
+}
+
+function submitForecast() {
+  const group = getSelectedGroup();
+  if (!group) return;
+  if (!currentUserIsActiveMember(group.id)) {
+    toast("Only approved members can submit forecasts in invite-only groups.");
+    return;
+  }
+
+  const marketId = els.groupMarketSelect.value;
+  if (!marketId) {
+    toast("Select a market before submitting a forecast.");
+    return;
+  }
+
+  const probability = Number(els.forecastProbabilityInput.value);
+  const rationale = els.forecastRationaleInput.value.trim();
+  const forecast = {
+    id: `fc-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    marketId,
+    author: state.profile.displayName,
+    probability,
+    rationale: rationale || "No rationale provided.",
+    source: "member",
+    createdAt: new Date().toISOString(),
+  };
+  upsertMarketForecast(group.id, forecast);
+  persistGroupConfigs();
+  renderForecasts();
+  renderHappyFlow();
+  toast("Forecast submitted to collaborative desk.");
+}
+
+function simulatePeerForecasts() {
+  const group = getSelectedGroup();
+  if (!group) return;
+  const marketId = els.groupMarketSelect.value;
+  if (!marketId) {
+    toast("Select a market before simulating peer forecasts.");
+    return;
+  }
+
+  const peers = activeMembersForGroup(group.id).filter((member) => member.name !== state.profile.displayName);
+  if (peers.length === 0) {
+    toast("No peer members available yet. Invite and approve members first.");
+    return;
+  }
+
+  const anchor = Number(els.forecastProbabilityInput.value);
+  const count = Math.min(3, peers.length);
+  for (let i = 0; i < count; i += 1) {
+    const peer = peers[i];
+    const noise = Math.round((deterministicFloat(`${marketId}-${peer.name}-${Date.now()}`) - 0.5) * 24);
+    const probability = clamp(anchor + noise, 1, 99);
+    upsertMarketForecast(group.id, {
+      id: `fc-peer-${marketId}-${peer.id}`,
+      marketId,
+      author: peer.name,
+      probability,
+      rationale: `Signal blend from ${peer.name}'s intelligence workflow.`,
+      source: "peer",
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  persistGroupConfigs();
+  renderForecasts();
+  renderHappyFlow();
+  toast("Peer forecasts added for collaborative consensus.");
+}
+
+function upsertMarketForecast(groupId, forecast) {
+  const config = getGroupConfig(groupId);
+  if (!config.forecastsByMarket[forecast.marketId]) config.forecastsByMarket[forecast.marketId] = [];
+
+  const list = config.forecastsByMarket[forecast.marketId];
+  const existingIndex = list.findIndex((item) => item.author === forecast.author);
+  if (existingIndex >= 0) {
+    list[existingIndex] = forecast;
+  } else {
+    list.unshift(forecast);
+  }
+}
+
+function getForecastsForMarket(groupId, marketId) {
+  const config = getGroupConfig(groupId);
+  return config?.forecastsByMarket?.[marketId] || [];
+}
+
+function computeConsensus(groupId, forecasts) {
+  const activeMembers = activeMembersForGroup(groupId);
+  const memberByName = new Map(activeMembers.map((member) => [member.name, member]));
+
+  if (forecasts.length === 0) {
+    return { probability: null, spread: null, participants: 0 };
+  }
+
+  let weightedTotal = 0;
+  let weightSum = 0;
+  forecasts.forEach((forecast) => {
+    const member = memberByName.get(forecast.author);
+    const rep = member ? member.reputation : 55;
+    const weight = clamp(0.7 + rep / 100, 0.7, 1.8);
+    weightedTotal += forecast.probability * weight;
+    weightSum += weight;
+  });
+
+  const probs = forecasts.map((f) => f.probability);
+  const spread = Math.max(...probs) - Math.min(...probs);
+  return {
+    probability: Math.round(weightedTotal / Math.max(weightSum, 1)),
+    spread,
+    participants: forecasts.length,
+  };
+}
+
+function renderForecasts() {
+  const group = getSelectedGroup();
+  els.forecastList.innerHTML = "";
+
+  if (!group) {
+    els.forecastConsensusSummary.textContent = "No forecasts yet for this market.";
+    return;
+  }
+  const marketId = els.groupMarketSelect.value || group.markets[0]?.id;
+  if (!marketId) {
+    els.forecastConsensusSummary.textContent = "No market selected.";
+    return;
+  }
+
+  const forecasts = getForecastsForMarket(group.id, marketId);
+  const consensus = computeConsensus(group.id, forecasts);
+  if (consensus.probability === null) {
+    els.forecastConsensusSummary.textContent = "No forecasts yet for this market.";
+  } else {
+    els.forecastConsensusSummary.textContent = `Consensus ${consensus.probability}% · Spread ${consensus.spread} pts · ${consensus.participants} contributors`;
+  }
+
+  if (forecasts.length === 0) {
+    els.forecastList.innerHTML =
+      "<li class='position-item'><small>Submit the first forecast or simulate peers to start collaboration.</small></li>";
+    return;
+  }
+
+  forecasts
+    .slice()
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .forEach((forecast) => {
+      const li = document.createElement("li");
+      li.className = "position-item";
+      li.innerHTML = `
+        <div class="position-head">
+          <div>
+            <strong>${forecast.author}</strong>
+            <small>${forecast.probability}% probability · ${forecast.source}</small>
+          </div>
+          <span class="status-badge status-building">${formatShortDate(forecast.createdAt)}</span>
+        </div>
+        <div class="position-meta">
+          <span>${forecast.rationale}</span>
+        </div>
+      `;
+      els.forecastList.appendChild(li);
+    });
 }
 
 function placeGroupTrade(side) {
   const group = getSelectedGroup();
   if (!group) return;
+  if (group.inviteOnly && !currentUserIsActiveMember(group.id)) {
+    toast("This invite-only group requires active membership to trade.");
+    return;
+  }
   const market = group.markets.find((item) => item.id === els.groupMarketSelect.value) || group.markets[0];
   if (!market) return;
 
@@ -1096,10 +1580,31 @@ function renderAccount() {
 }
 
 function renderHappyFlow() {
+  const customMarketsCount = Object.values(state.groupConfigs).reduce(
+    (sum, config) => sum + (config.customMarkets?.length || 0),
+    0
+  );
+  const collaborativeForecastCount = Object.values(state.groupConfigs).reduce(
+    (sum, config) =>
+      sum +
+      Object.values(config.forecastsByMarket || {}).reduce(
+        (inner, list) => inner + (Array.isArray(list) ? list.length : 0),
+        0
+      ),
+    0
+  );
+  const approvedInvitesCount = Object.values(state.groupConfigs).reduce((sum, config) => {
+    const activeMembers = (config.members || []).filter((member) => member.status === "active").length;
+    return sum + Math.max(0, activeMembers - 3);
+  }, 0);
+
   const steps = [
     { done: Boolean(state.profile), action: "Complete onboarding profile" },
     { done: state.matches.length > 0, action: "Create your first mutual pair in Match Feed" },
     { done: state.positions.length > 0, action: "Open a position from a successful pair" },
+    { done: approvedInvitesCount > 0, action: "Invite and approve one member in Trusted Groups" },
+    { done: customMarketsCount > 0, action: "Create one new market in a trusted group" },
+    { done: collaborativeForecastCount > 0, action: "Submit a collaborative forecast" },
     { done: state.groupTrades.length > 0, action: "Place first trade in Trusted Groups" },
     {
       done: state.groupTrades.some((trade) => trade.status !== "open"),
@@ -1148,6 +1653,7 @@ function hydrateFromStorage() {
   const rawMatches = localStorage.getItem(STORAGE_MATCHES_KEY);
   const rawPositions = localStorage.getItem(STORAGE_POSITIONS_KEY);
   const rawGroupTrades = localStorage.getItem(STORAGE_GROUP_TRADES_KEY);
+  const rawGroupConfigs = localStorage.getItem(STORAGE_GROUP_CONFIGS_KEY);
   const rawAccount = localStorage.getItem(STORAGE_ACCOUNT_KEY);
 
   if (rawMatches) {
@@ -1171,6 +1677,14 @@ function hydrateFromStorage() {
       state.groupTrades = JSON.parse(rawGroupTrades);
     } catch {
       state.groupTrades = [];
+    }
+  }
+
+  if (rawGroupConfigs) {
+    try {
+      state.groupConfigs = JSON.parse(rawGroupConfigs);
+    } catch {
+      state.groupConfigs = {};
     }
   }
 
@@ -1225,6 +1739,10 @@ function persistGroupTrades() {
   localStorage.setItem(STORAGE_GROUP_TRADES_KEY, JSON.stringify(state.groupTrades));
 }
 
+function persistGroupConfigs() {
+  localStorage.setItem(STORAGE_GROUP_CONFIGS_KEY, JSON.stringify(state.groupConfigs));
+}
+
 function persistAccount() {
   localStorage.setItem(STORAGE_ACCOUNT_KEY, JSON.stringify(state.account));
 }
@@ -1234,6 +1752,7 @@ function resetAll() {
   localStorage.removeItem(STORAGE_MATCHES_KEY);
   localStorage.removeItem(STORAGE_POSITIONS_KEY);
   localStorage.removeItem(STORAGE_GROUP_TRADES_KEY);
+  localStorage.removeItem(STORAGE_GROUP_CONFIGS_KEY);
   localStorage.removeItem(STORAGE_ACCOUNT_KEY);
   window.location.reload();
 }
