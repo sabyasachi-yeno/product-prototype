@@ -13,6 +13,8 @@ The current build includes:
 - invite-only membership governance,
 - group market creation,
 - collaborative forecasting and consensus,
+- polymarket-style prediction exchange,
+- UGC creator terminal with moderation queue,
 - manual outcome resolution,
 - verified intelligence reputation per group,
 - portfolio/account state,
@@ -54,11 +56,13 @@ The current build includes:
    - contributes collaborative forecast input,
    - chooses a market,
    - places YES/NO trade with stake + conviction.
-5. User resolves an outcome ("Resolve Outcome: YES/NO"):
+5. User opens **Prediction Exchange** and executes buy/sell in YES/NO contracts.
+6. User opens **Creator Terminal** and submits + publishes UGC markets.
+7. User resolves an outcome ("Resolve Outcome: YES/NO"):
    - trade settles,
    - account and PnL update,
    - group intelligence reputation updates.
-6. Happy-flow completion reaches 100%.
+8. Happy-flow completion reaches 100%.
 
 ---
 
@@ -71,6 +75,8 @@ The current build includes:
   - Match Feed
   - My Positions
   - Trusted Groups
+  - Prediction Exchange
+  - Creator Terminal
 
 ## Global strip
 
@@ -164,7 +170,27 @@ Governance and collaboration flow:
 4. Submit forecast and rationale
 5. Review consensus probability and spread
 
-## 5.5 Verified intelligence reputation
+## 5.5 Prediction Exchange (Polymarket-style)
+
+Capabilities:
+
+- market board with YES/NO probabilities
+- order-book depth view
+- trade ticket (BUY/SELL + YES/NO + shares + price)
+- recent market tape
+- mark-to-market position summary
+
+## 5.6 Creator Terminal (UGC)
+
+Capabilities:
+
+- create user-generated market drafts
+- define category, close date, resolution source, visibility
+- route drafts to moderation queue
+- approve/reject queue items
+- publish approved markets into exchange (public or group-scoped)
+
+## 5.7 Verified intelligence reputation
 
 Computed per group from settled group trades:
 
@@ -180,7 +206,7 @@ Verification thresholds:
 - at least 60% accuracy
 - score >= 55
 
-## 5.6 Account model
+## 5.8 Account model
 
 Account fields:
 
@@ -208,6 +234,9 @@ Keys:
 - `pulsematch.positions.v1`
 - `pulsematch.groupTrades.v1`
 - `pulsematch.groupConfigs.v1`
+- `pulsematch.polyMarkets.v1`
+- `pulsematch.polyPositions.v1`
+- `pulsematch.creatorQueue.v1`
 - `pulsematch.account.v1`
 
 Notes:
@@ -244,6 +273,18 @@ For each settled trade:
 - `convictionFactor = 1 + abs(entryProbability - 50)/40`
 
 Final score clamped to [0, 100].
+
+## Exchange execution model
+
+- BUY order:
+  - deducts `shares * price` from account cash
+  - increases YES/NO position inventory
+- SELL order:
+  - requires existing inventory
+  - credits `shares * price` to cash
+  - realizes PnL from `(sellPrice - avgEntryPrice) * shares`
+
+Exchange probabilities move with trade impact and liquidity depth.
 
 ---
 

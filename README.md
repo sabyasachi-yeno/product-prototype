@@ -11,6 +11,8 @@ Prediction-market prototype with dating-style matching, trusted interest groups,
 - Invite-only trusted groups with membership governance (invite/approve/reject)
 - Real market creation inside trusted groups
 - Collaborative forecasting workflow with consensus view
+- Polymarket-style **Prediction Exchange** with market board, order-book depth, and trade ticket
+- **Creator Terminal (UGC)** with moderation queue and publish/reject flow
 - Group trade resolution and verified intelligence reputation
 - Trading account strip (cash, exposure, realized PnL)
 - Happy-flow progression tracker

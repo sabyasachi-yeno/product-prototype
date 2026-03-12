@@ -135,6 +135,12 @@
           <button class="market-tab" type="button" data-market-tab="groups" role="tab">
             Trusted Groups
           </button>
+          <button class="market-tab" type="button" data-market-tab="exchange" role="tab">
+            Prediction Exchange
+          </button>
+          <button class="market-tab" type="button" data-market-tab="creator" role="tab">
+            Creator Terminal
+          </button>
         </div>
 
         <div class="account-strip">
@@ -309,6 +315,118 @@
               </div>
 
               <ul id="groupTradesList" class="positions-list"></ul>
+            </section>
+          </div>
+        </section>
+
+        <section id="exchangeTabPanel" class="tab-panel hidden">
+          <div class="exchange-layout">
+            <section class="panel">
+              <div class="panel-title">
+                <h2>Polymarket-style board</h2>
+                <p>Live probability markets</p>
+              </div>
+              <label for="exchangeMarketSearch">Search markets</label>
+              <input id="exchangeMarketSearch" type="text" placeholder="Search by question or category" />
+              <div id="exchangeMarketList" class="groups-grid"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-title">
+                <h2 id="exchangeSelectedTitle">Select a market</h2>
+                <p id="exchangeSelectedMeta">-</p>
+              </div>
+              <div class="kpi-row compact">
+                <article class="kpi">
+                  <small>YES</small>
+                  <strong id="exchangeYesPrice">-</strong>
+                </article>
+                <article class="kpi">
+                  <small>NO</small>
+                  <strong id="exchangeNoPrice">-</strong>
+                </article>
+              </div>
+
+              <p class="meta-label">Order book depth</p>
+              <ul id="exchangeOrderBook" class="positions-list compact"></ul>
+
+              <div class="group-subsection">
+                <h3 class="panel-mini-title">Trade ticket</h3>
+                <label for="exchangeTradeSide">Side</label>
+                <select id="exchangeTradeSide">
+                  <option value="BUY" selected>BUY</option>
+                  <option value="SELL">SELL</option>
+                </select>
+                <label for="exchangeTradeOutcome">Outcome</label>
+                <select id="exchangeTradeOutcome">
+                  <option value="YES" selected>YES</option>
+                  <option value="NO">NO</option>
+                </select>
+                <label for="exchangeTradeShares">Shares</label>
+                <input id="exchangeTradeShares" type="number" min="1" step="1" value="10" />
+                <label for="exchangeTradePrice">Price</label>
+                <input id="exchangeTradePrice" type="number" min="0.01" max="0.99" step="0.01" value="0.50" />
+                <button id="executeExchangeTradeButton" type="button">Execute Trade</button>
+              </div>
+
+              <div class="group-subsection">
+                <h3 class="panel-mini-title">Your exchange positions</h3>
+                <p id="exchangePositionSummary" class="meta-label">No exchange positions yet.</p>
+              </div>
+
+              <p class="meta-label">Recent market tape</p>
+              <ul id="exchangeTapeList" class="positions-list compact"></ul>
+            </section>
+          </div>
+        </section>
+
+        <section id="creatorTabPanel" class="tab-panel hidden">
+          <div class="exchange-layout">
+            <section class="panel">
+              <div class="panel-title">
+                <h2>Creator Terminal (UGC)</h2>
+                <p>Create and publish community markets</p>
+              </div>
+
+              <label for="creatorQuestionInput">Market question</label>
+              <input
+                id="creatorQuestionInput"
+                type="text"
+                placeholder="Will EV sales exceed 20% share this quarter?"
+              />
+              <label for="creatorCategorySelect">Category</label>
+              <select id="creatorCategorySelect"></select>
+              <label for="creatorCloseDateInput">Close date</label>
+              <input id="creatorCloseDateInput" type="date" />
+              <label for="creatorResolutionSourceInput">Resolution source</label>
+              <input
+                id="creatorResolutionSourceInput"
+                type="text"
+                placeholder="Official government or audited industry report"
+              />
+              <label for="creatorVisibilitySelect">Visibility</label>
+              <select id="creatorVisibilitySelect">
+                <option value="public" selected>Public exchange</option>
+                <option value="group">Invite-only trusted group</option>
+              </select>
+              <label for="creatorGroupSelect">Target group (if invite-only)</label>
+              <select id="creatorGroupSelect"></select>
+              <label for="creatorInitialYesPrice">Initial YES probability (%)</label>
+              <input id="creatorInitialYesPrice" type="range" min="5" max="95" step="1" value="52" />
+              <label for="creatorInitialLiquidity">Initial liquidity ($)</label>
+              <input id="creatorInitialLiquidity" type="number" min="1000" step="100" value="10000" />
+              <button id="submitCreatorMarketButton" type="button">Submit to moderation queue</button>
+            </section>
+
+            <section class="panel">
+              <div class="panel-title">
+                <h2>Creator moderation</h2>
+                <p>Approve or reject UGC markets</p>
+              </div>
+              <p class="meta-label">Pending queue</p>
+              <ul id="creatorQueueList" class="positions-list"></ul>
+              <p class="meta-label">Published by creators</p>
+              <ul id="creatorPublishedList" class="positions-list compact"></ul>
             </section>
           </div>
         </section>

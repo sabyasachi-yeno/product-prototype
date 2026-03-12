@@ -4,6 +4,9 @@ const STORAGE_POSITIONS_KEY = "pulsematch.positions.v1";
 const STORAGE_GROUP_TRADES_KEY = "pulsematch.groupTrades.v1";
 const STORAGE_ACCOUNT_KEY = "pulsematch.account.v1";
 const STORAGE_GROUP_CONFIGS_KEY = "pulsematch.groupConfigs.v1";
+const STORAGE_POLY_MARKETS_KEY = "pulsematch.polyMarkets.v1";
+const STORAGE_POLY_POSITIONS_KEY = "pulsematch.polyPositions.v1";
+const STORAGE_CREATOR_QUEUE_KEY = "pulsematch.creatorQueue.v1";
 
 const INTEREST_GROUPS = [
   "US Politics",
@@ -239,6 +242,56 @@ function ensureAccountShape(account) {
   };
 }
 
+function buildDefaultPolyMarkets() {
+  return [
+    {
+      id: "pm-1",
+      question: "Will the Fed cut rates at least twice this year?",
+      category: "Macro & Rates",
+      closeDate: "2026-12-20",
+      yesPrice: 0.57,
+      volume: 148200,
+      liquidity: 92000,
+      resolutionSource: "FOMC official statement",
+      status: "open",
+      createdBy: "PulseMatch Desk",
+      visibility: "public",
+      groupId: null,
+      tape: [],
+    },
+    {
+      id: "pm-2",
+      question: "Will BTC print a new all-time high before year-end?",
+      category: "Crypto",
+      closeDate: "2026-12-31",
+      yesPrice: 0.62,
+      volume: 213700,
+      liquidity: 118000,
+      resolutionSource: "Major exchange consolidated index",
+      status: "open",
+      createdBy: "PulseMatch Desk",
+      visibility: "public",
+      groupId: null,
+      tape: [],
+    },
+    {
+      id: "pm-3",
+      question: "Will a top cloud vendor release full autonomous agent billing this year?",
+      category: "AI & Tech",
+      closeDate: "2026-11-15",
+      yesPrice: 0.43,
+      volume: 96200,
+      liquidity: 74000,
+      resolutionSource: "Official product launch documentation",
+      status: "open",
+      createdBy: "PulseMatch Desk",
+      visibility: "public",
+      groupId: null,
+      tape: [],
+    },
+  ];
+}
+
 const state = {
   step: 0,
   selectedInterests: new Set(),
@@ -252,8 +305,12 @@ const state = {
   trustedGroups: [],
   groupTrades: [],
   groupConfigs: {},
+  polyMarkets: [],
+  polyPositions: [],
+  creatorQueue: [],
   account: buildDefaultAccount(),
   selectedGroupId: null,
+  selectedExchangeMarketId: null,
   activeTab: "feed",
   drag: {
     active: false,
@@ -315,6 +372,31 @@ const els = {
   tradeYesButton: document.getElementById("tradeYesButton"),
   tradeNoButton: document.getElementById("tradeNoButton"),
   groupTradesList: document.getElementById("groupTradesList"),
+  exchangeMarketSearch: document.getElementById("exchangeMarketSearch"),
+  exchangeMarketList: document.getElementById("exchangeMarketList"),
+  exchangeSelectedTitle: document.getElementById("exchangeSelectedTitle"),
+  exchangeSelectedMeta: document.getElementById("exchangeSelectedMeta"),
+  exchangeYesPrice: document.getElementById("exchangeYesPrice"),
+  exchangeNoPrice: document.getElementById("exchangeNoPrice"),
+  exchangeOrderBook: document.getElementById("exchangeOrderBook"),
+  exchangeTradeSide: document.getElementById("exchangeTradeSide"),
+  exchangeTradeOutcome: document.getElementById("exchangeTradeOutcome"),
+  exchangeTradeShares: document.getElementById("exchangeTradeShares"),
+  exchangeTradePrice: document.getElementById("exchangeTradePrice"),
+  executeExchangeTradeButton: document.getElementById("executeExchangeTradeButton"),
+  exchangePositionSummary: document.getElementById("exchangePositionSummary"),
+  exchangeTapeList: document.getElementById("exchangeTapeList"),
+  creatorQuestionInput: document.getElementById("creatorQuestionInput"),
+  creatorCategorySelect: document.getElementById("creatorCategorySelect"),
+  creatorCloseDateInput: document.getElementById("creatorCloseDateInput"),
+  creatorResolutionSourceInput: document.getElementById("creatorResolutionSourceInput"),
+  creatorVisibilitySelect: document.getElementById("creatorVisibilitySelect"),
+  creatorGroupSelect: document.getElementById("creatorGroupSelect"),
+  creatorInitialYesPrice: document.getElementById("creatorInitialYesPrice"),
+  creatorInitialLiquidity: document.getElementById("creatorInitialLiquidity"),
+  submitCreatorMarketButton: document.getElementById("submitCreatorMarketButton"),
+  creatorQueueList: document.getElementById("creatorQueueList"),
+  creatorPublishedList: document.getElementById("creatorPublishedList"),
   accountCash: document.getElementById("accountCash"),
   accountOpenExposure: document.getElementById("accountOpenExposure"),
   accountRealizedPnl: document.getElementById("accountRealizedPnl"),
@@ -330,6 +412,8 @@ const els = {
   feedTabPanel: document.getElementById("feedTabPanel"),
   positionsTabPanel: document.getElementById("positionsTabPanel"),
   groupsTabPanel: document.getElementById("groupsTabPanel"),
+  exchangeTabPanel: document.getElementById("exchangeTabPanel"),
+  creatorTabPanel: document.getElementById("creatorTabPanel"),
   toast: document.getElementById("toast"),
 };
 
@@ -393,6 +477,14 @@ function bindEvents() {
   els.tradeYesButton.addEventListener("click", () => placeGroupTrade("YES"));
   els.tradeNoButton.addEventListener("click", () => placeGroupTrade("NO"));
   els.groupTradesList.addEventListener("click", onGroupTradeActionClick);
+  els.exchangeMarketList.addEventListener("click", onExchangeMarketClick);
+  els.exchangeMarketSearch.addEventListener("input", renderExchangeMarkets);
+  els.exchangeTradeSide.addEventListener("change", syncExchangeTradePrice);
+  els.exchangeTradeOutcome.addEventListener("change", syncExchangeTradePrice);
+  els.executeExchangeTradeButton.addEventListener("click", executeExchangeTrade);
+  els.submitCreatorMarketButton.addEventListener("click", submitCreatorMarket);
+  els.creatorVisibilitySelect.addEventListener("change", renderCreatorGroupOptions);
+  els.creatorQueueList.addEventListener("click", onCreatorQueueActionClick);
   els.marketTabs.forEach((tab) => {
     tab.addEventListener("click", () => setActiveTab(tab.dataset.marketTab));
   });
@@ -491,6 +583,9 @@ function finalizeOnboarding() {
   persistPositions();
   persistGroupTrades();
   persistGroupConfigs();
+  persistPolyMarkets();
+  persistPolyPositions();
+  persistCreatorQueue();
   persistAccount();
   initializeMatching();
 }
@@ -515,6 +610,12 @@ function initializeMatching() {
   renderGroupMarketDesk();
   renderForecasts();
   renderGroupTrades();
+  seedPolyMarketsIfNeeded();
+  renderCreatorCategoryOptions();
+  renderCreatorGroupOptions();
+  renderExchangeMarkets();
+  renderExchangeSelectedMarket();
+  renderCreatorTerminal();
   renderAccount();
   renderHappyFlow();
   renderKpis();
@@ -1099,6 +1200,9 @@ function resolveInviteAction(inviteId, action) {
   renderGroupMarketDesk();
   renderForecasts();
   renderGroupTrades();
+  renderCreatorGroupOptions();
+  renderExchangeMarkets();
+  renderExchangeSelectedMarket();
   renderHappyFlow();
 }
 
@@ -1171,12 +1275,30 @@ function createGroupMarket() {
     isCustom: true,
   };
   config.customMarkets.unshift(newMarket);
+  state.polyMarkets.unshift({
+    id: newMarket.id,
+    question: newMarket.prompt,
+    category: group.interest,
+    closeDate: newMarket.closeDate,
+    yesPrice: 0.5,
+    volume: 0,
+    liquidity: 16000,
+    resolutionSource: "Trusted group governance outcome",
+    status: "open",
+    createdBy: state.profile.displayName,
+    visibility: "group",
+    groupId: group.id,
+    tape: [],
+  });
 
   els.createMarketQuestion.value = "";
   refreshTrustedGroupsFromConfigs();
   persistGroupConfigs();
+  persistPolyMarkets();
   renderTrustedGroups();
   renderGroupMarketDesk();
+  renderExchangeMarkets();
+  renderExchangeSelectedMarket();
   els.groupMarketSelect.value = newMarket.id;
   renderForecasts();
   renderGroupTrades();
@@ -1448,6 +1570,532 @@ function renderGroupTrades() {
   });
 }
 
+function seedPolyMarketsIfNeeded() {
+  if (state.polyMarkets.length === 0) {
+    state.polyMarkets = buildDefaultPolyMarkets();
+  } else {
+    state.polyMarkets = state.polyMarkets.map((market) => normalizePolyMarket(market));
+  }
+  if (!state.selectedExchangeMarketId || !getAccessiblePolyMarkets().some((m) => m.id === state.selectedExchangeMarketId)) {
+    state.selectedExchangeMarketId = getAccessiblePolyMarkets()[0]?.id || null;
+  }
+  persistPolyMarkets();
+}
+
+function normalizePolyMarket(market) {
+  return {
+    id: market.id,
+    question: market.question,
+    category: market.category || "General",
+    closeDate: market.closeDate || buildCloseDate(0, 0),
+    yesPrice: clamp(Number(market.yesPrice) || 0.5, 0.05, 0.95),
+    volume: Number(market.volume) || 0,
+    liquidity: Number(market.liquidity) || 10000,
+    resolutionSource: market.resolutionSource || "Community resolution",
+    status: market.status || "open",
+    createdBy: market.createdBy || "Unknown",
+    visibility: market.visibility || "public",
+    groupId: market.groupId || null,
+    tape: Array.isArray(market.tape) ? market.tape : [],
+  };
+}
+
+function getAccessiblePolyMarkets() {
+  return state.polyMarkets.filter((market) => {
+    if (market.visibility !== "group") return true;
+    if (!market.groupId) return true;
+    return currentUserIsActiveMember(market.groupId);
+  });
+}
+
+function renderExchangeMarkets() {
+  const query = els.exchangeMarketSearch.value.trim().toLowerCase();
+  const markets = getAccessiblePolyMarkets().filter((market) => {
+    if (!query) return true;
+    return market.question.toLowerCase().includes(query) || market.category.toLowerCase().includes(query);
+  });
+
+  if (!markets.some((market) => market.id === state.selectedExchangeMarketId)) {
+    state.selectedExchangeMarketId = markets[0]?.id || null;
+  }
+
+  els.exchangeMarketList.innerHTML = "";
+  if (markets.length === 0) {
+    els.exchangeMarketList.innerHTML =
+      "<div class='exchange-market-item'><small>No markets match this filter or access policy.</small></div>";
+    renderExchangeSelectedMarket();
+    return;
+  }
+
+  markets.forEach((market) => {
+    const item = document.createElement("article");
+    item.className = `exchange-market-item ${market.id === state.selectedExchangeMarketId ? "active" : ""}`;
+    item.dataset.exchangeMarketId = market.id;
+    item.innerHTML = `
+      <div class="group-head">
+        <div>
+          <strong>${market.question}</strong>
+          <small>${market.category} · closes ${market.closeDate}</small>
+        </div>
+        <span class="status-badge status-building">${market.visibility === "group" ? "Invite-only" : "Public"}</span>
+      </div>
+      <div class="group-meta">
+        <span>YES: ${(market.yesPrice * 100).toFixed(1)}%</span>
+        <span>NO: ${((1 - market.yesPrice) * 100).toFixed(1)}%</span>
+        <span>Volume: $${Math.round(market.volume).toLocaleString()}</span>
+        <span>Liquidity: $${Math.round(market.liquidity).toLocaleString()}</span>
+      </div>
+    `;
+    els.exchangeMarketList.appendChild(item);
+  });
+
+  renderExchangeSelectedMarket();
+}
+
+function onExchangeMarketClick(event) {
+  const card = event.target.closest("[data-exchange-market-id]");
+  if (!card) return;
+  state.selectedExchangeMarketId = card.dataset.exchangeMarketId;
+  renderExchangeMarkets();
+}
+
+function getSelectedExchangeMarket() {
+  return getAccessiblePolyMarkets().find((market) => market.id === state.selectedExchangeMarketId) || null;
+}
+
+function renderExchangeSelectedMarket() {
+  const market = getSelectedExchangeMarket();
+  els.exchangeOrderBook.innerHTML = "";
+  els.exchangeTapeList.innerHTML = "";
+
+  if (!market) {
+    els.exchangeSelectedTitle.textContent = "Select a market";
+    els.exchangeSelectedMeta.textContent = "-";
+    els.exchangeYesPrice.textContent = "-";
+    els.exchangeNoPrice.textContent = "-";
+    els.exchangePositionSummary.textContent = "No exchange positions yet.";
+    els.executeExchangeTradeButton.disabled = true;
+    return;
+  }
+
+  els.exchangeSelectedTitle.textContent = market.question;
+  const visibilityLabel = market.visibility === "group" ? "Invite-only trusted group" : "Public";
+  els.exchangeSelectedMeta.textContent = `${market.category} · ${visibilityLabel} · resolves via ${market.resolutionSource}`;
+  els.exchangeYesPrice.textContent = `${(market.yesPrice * 100).toFixed(1)}%`;
+  els.exchangeNoPrice.textContent = `${((1 - market.yesPrice) * 100).toFixed(1)}%`;
+
+  buildExchangeOrderBook(market).forEach((row) => {
+    const li = document.createElement("li");
+    li.className = "position-item";
+    li.innerHTML = `
+      <div class="position-head">
+        <strong>${row.label}</strong>
+        <span class="status-badge status-building">${(row.price * 100).toFixed(1)}%</span>
+      </div>
+      <div class="position-meta">
+        <span>Depth: ${row.depth.toLocaleString()} shares</span>
+      </div>
+    `;
+    els.exchangeOrderBook.appendChild(li);
+  });
+
+  syncExchangeTradePrice();
+  els.executeExchangeTradeButton.disabled = false;
+  renderExchangePositionSummary(market.id);
+  renderExchangeTape(market);
+}
+
+function buildExchangeOrderBook(market) {
+  const spread = clamp(0.02 + 12000 / Math.max(market.liquidity, 12000) * 0.02, 0.02, 0.06);
+  const yesBid = clamp(market.yesPrice - spread / 2, 0.01, 0.99);
+  const yesAsk = clamp(market.yesPrice + spread / 2, 0.01, 0.99);
+  const noMid = 1 - market.yesPrice;
+  const noBid = clamp(noMid - spread / 2, 0.01, 0.99);
+  const noAsk = clamp(noMid + spread / 2, 0.01, 0.99);
+  const depthBase = Math.max(500, Math.round(market.liquidity / 60));
+  return [
+    { label: "YES Bid", price: yesBid, depth: depthBase + 140 },
+    { label: "YES Ask", price: yesAsk, depth: depthBase + 90 },
+    { label: "NO Bid", price: noBid, depth: depthBase + 120 },
+    { label: "NO Ask", price: noAsk, depth: depthBase + 80 },
+  ];
+}
+
+function syncExchangeTradePrice() {
+  const market = getSelectedExchangeMarket();
+  if (!market) return;
+  const side = els.exchangeTradeSide.value;
+  const outcome = els.exchangeTradeOutcome.value;
+  const book = buildExchangeOrderBook(market);
+  const yesBid = book[0].price;
+  const yesAsk = book[1].price;
+  const noBid = book[2].price;
+  const noAsk = book[3].price;
+
+  let price = market.yesPrice;
+  if (outcome === "YES") {
+    price = side === "BUY" ? yesAsk : yesBid;
+  } else {
+    price = side === "BUY" ? noAsk : noBid;
+  }
+  els.exchangeTradePrice.value = price.toFixed(2);
+}
+
+function executeExchangeTrade() {
+  const market = getSelectedExchangeMarket();
+  if (!market) return;
+  const side = els.exchangeTradeSide.value;
+  const outcome = els.exchangeTradeOutcome.value;
+  const shares = Number(els.exchangeTradeShares.value);
+  const price = Number(els.exchangeTradePrice.value);
+  if (!Number.isFinite(shares) || shares <= 0) {
+    toast("Shares must be a positive number.");
+    return;
+  }
+  if (!Number.isFinite(price) || price <= 0 || price >= 1) {
+    toast("Price must be between 0.01 and 0.99.");
+    return;
+  }
+
+  const notional = round2(shares * price);
+  const position = getPolyPosition(market.id, outcome);
+  if (side === "BUY") {
+    if (notional > state.account.cash) {
+      toast("Insufficient cash for this exchange order.");
+      return;
+    }
+    state.account.cash = round2(state.account.cash - notional);
+    upsertPolyPosition(market.id, outcome, shares, price);
+  } else {
+    if (!position || position.shares < shares) {
+      toast("Not enough shares to sell this outcome.");
+      return;
+    }
+    const proceeds = notional;
+    const realized = round2((price - position.avgPrice) * shares);
+    state.account.cash = round2(state.account.cash + proceeds);
+    state.account.realizedPnl = round2(state.account.realizedPnl + realized);
+    state.account.tradesSettled += 1;
+    position.shares = round2(position.shares - shares);
+    if (position.shares <= 0) {
+      state.polyPositions = state.polyPositions.filter(
+        (item) => !(item.marketId === market.id && item.outcome === outcome)
+      );
+    }
+  }
+
+  state.account.tradesPlaced += 1;
+  applyExchangePriceImpact(market, side, outcome, shares);
+  market.volume = round2(market.volume + notional);
+  market.tape.unshift({
+    id: `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    side,
+    outcome,
+    shares: round2(shares),
+    price: round2(price),
+    timestamp: new Date().toISOString(),
+    trader: state.profile.displayName,
+  });
+  market.tape = market.tape.slice(0, 20);
+
+  persistAccount();
+  persistPolyMarkets();
+  persistPolyPositions();
+  renderExchangeMarkets();
+  renderExchangeSelectedMarket();
+  renderAccount();
+  renderHappyFlow();
+  toast(`${side} ${shares} ${outcome} shares at ${(price * 100).toFixed(1)}%.`);
+}
+
+function applyExchangePriceImpact(market, side, outcome, shares) {
+  const directionBase = outcome === "YES" ? 1 : -1;
+  const direction = side === "BUY" ? directionBase : -directionBase;
+  const impact = clamp((shares / Math.max(market.liquidity, 5000)) * 2.2, 0.001, 0.06);
+  market.yesPrice = clamp(round2(market.yesPrice + direction * impact), 0.05, 0.95);
+}
+
+function getPolyPosition(marketId, outcome) {
+  return state.polyPositions.find((position) => position.marketId === marketId && position.outcome === outcome) || null;
+}
+
+function upsertPolyPosition(marketId, outcome, shares, price) {
+  const existing = getPolyPosition(marketId, outcome);
+  if (!existing) {
+    state.polyPositions.push({
+      id: `pos-${marketId}-${outcome}`,
+      marketId,
+      outcome,
+      shares: round2(shares),
+      avgPrice: round2(price),
+    });
+    return;
+  }
+  const totalShares = existing.shares + shares;
+  existing.avgPrice = round2((existing.avgPrice * existing.shares + price * shares) / Math.max(totalShares, 1));
+  existing.shares = round2(totalShares);
+}
+
+function renderExchangePositionSummary(marketId) {
+  const market = state.polyMarkets.find((item) => item.id === marketId);
+  const positions = state.polyPositions.filter((position) => position.marketId === marketId);
+  if (!market || positions.length === 0) {
+    els.exchangePositionSummary.textContent = "No exchange positions in this market.";
+    return;
+  }
+
+  let totalValue = 0;
+  let totalCost = 0;
+  positions.forEach((position) => {
+    const mark = position.outcome === "YES" ? market.yesPrice : 1 - market.yesPrice;
+    totalValue += position.shares * mark;
+    totalCost += position.shares * position.avgPrice;
+  });
+  const unrealized = round2(totalValue - totalCost);
+  els.exchangePositionSummary.textContent = `${positions
+    .map((p) => `${p.outcome} ${p.shares} @ ${(p.avgPrice * 100).toFixed(1)}%`)
+    .join(" · ")} · Unrealized ${formatPnl(unrealized)}`;
+}
+
+function renderExchangeTape(market) {
+  if (!market.tape || market.tape.length === 0) {
+    els.exchangeTapeList.innerHTML = "<li class='position-item'><small>No fills yet in this market.</small></li>";
+    return;
+  }
+  market.tape.slice(0, 8).forEach((fill) => {
+    const li = document.createElement("li");
+    li.className = "position-item";
+    li.innerHTML = `
+      <div class="position-head">
+        <strong>${fill.side} ${fill.outcome}</strong>
+        <span class="status-badge status-building">${(fill.price * 100).toFixed(1)}%</span>
+      </div>
+      <div class="position-meta">
+        <span>${fill.shares} shares · ${fill.trader}</span>
+        <span>${formatShortDate(fill.timestamp)}</span>
+      </div>
+    `;
+    els.exchangeTapeList.appendChild(li);
+  });
+}
+
+function renderCreatorCategoryOptions() {
+  if (els.creatorCategorySelect.options.length > 0) return;
+  INTEREST_GROUPS.forEach((category) => {
+    const option = document.createElement("option");
+    option.value = category;
+    option.textContent = category;
+    els.creatorCategorySelect.appendChild(option);
+  });
+}
+
+function renderCreatorGroupOptions() {
+  const isGroupVisibility = els.creatorVisibilitySelect.value === "group";
+  els.creatorGroupSelect.disabled = !isGroupVisibility;
+  els.creatorGroupSelect.innerHTML = "";
+
+  if (state.trustedGroups.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No trusted groups available";
+    els.creatorGroupSelect.appendChild(option);
+    return;
+  }
+
+  state.trustedGroups.forEach((group) => {
+    const option = document.createElement("option");
+    option.value = group.id;
+    option.textContent = `${group.name} (${group.interest})`;
+    els.creatorGroupSelect.appendChild(option);
+  });
+}
+
+function submitCreatorMarket() {
+  const question = els.creatorQuestionInput.value.trim();
+  const category = els.creatorCategorySelect.value;
+  const closeDate = els.creatorCloseDateInput.value;
+  const resolutionSource = els.creatorResolutionSourceInput.value.trim();
+  const visibility = els.creatorVisibilitySelect.value;
+  const groupId = visibility === "group" ? els.creatorGroupSelect.value : null;
+  const initialYesPrice = Number(els.creatorInitialYesPrice.value) / 100;
+  const initialLiquidity = Number(els.creatorInitialLiquidity.value);
+
+  if (question.length < 16) {
+    toast("UGC market question should be at least 16 characters.");
+    return;
+  }
+  if (!closeDate) {
+    toast("Choose a close date for UGC market.");
+    return;
+  }
+  if (!resolutionSource) {
+    toast("Provide a resolution source for market integrity.");
+    return;
+  }
+  if (visibility === "group" && !groupId) {
+    toast("Select a target trusted group for invite-only market.");
+    return;
+  }
+  if (visibility === "group" && !currentUserIsActiveMember(groupId)) {
+    toast("You must be an active member of the target group to publish invite-only UGC markets.");
+    return;
+  }
+  if (!Number.isFinite(initialLiquidity) || initialLiquidity < 1000) {
+    toast("Initial liquidity must be at least $1000.");
+    return;
+  }
+
+  const queueItem = {
+    id: `ugc-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    question,
+    category,
+    closeDate,
+    resolutionSource,
+    visibility,
+    groupId,
+    initialYesPrice: clamp(initialYesPrice, 0.05, 0.95),
+    initialLiquidity,
+    status: "pending",
+    submittedAt: new Date().toISOString(),
+    submittedBy: state.profile.displayName,
+    reviewedAt: null,
+  };
+  state.creatorQueue.unshift(queueItem);
+  persistCreatorQueue();
+  renderCreatorTerminal();
+  renderHappyFlow();
+  toast("UGC market submitted to creator moderation queue.");
+}
+
+function renderCreatorTerminal() {
+  if (!els.creatorCloseDateInput.value) {
+    const close = new Date();
+    close.setDate(close.getDate() + 30);
+    els.creatorCloseDateInput.value = close.toISOString().slice(0, 10);
+  }
+
+  renderCreatorGroupOptions();
+  els.creatorQueueList.innerHTML = "";
+  els.creatorPublishedList.innerHTML = "";
+
+  const pending = state.creatorQueue.filter((item) => item.status === "pending");
+  if (pending.length === 0) {
+    els.creatorQueueList.innerHTML = "<li class='position-item'><small>No pending UGC markets in queue.</small></li>";
+  } else {
+    pending.forEach((item) => {
+      const li = document.createElement("li");
+      li.className = "position-item";
+      li.innerHTML = `
+        <div class="position-head">
+          <div>
+            <strong>${item.question}</strong>
+            <small>${item.category} · ${item.visibility === "group" ? "Invite-only" : "Public"} · closes ${
+              item.closeDate
+            }</small>
+          </div>
+          <span class="status-badge status-building">Pending</span>
+        </div>
+        <div class="position-meta">
+          <span>Submitted by ${item.submittedBy}</span>
+          <span>Liquidity $${Math.round(item.initialLiquidity).toLocaleString()}</span>
+        </div>
+        <div class="position-actions">
+          <button class="tiny" type="button" data-queue-id="${item.id}" data-queue-action="publish">Approve & Publish</button>
+          <button class="tiny ghost" type="button" data-queue-id="${item.id}" data-queue-action="reject">Reject</button>
+        </div>
+      `;
+      els.creatorQueueList.appendChild(li);
+    });
+  }
+
+  const published = state.creatorQueue.filter((item) => item.status === "published");
+  if (published.length === 0) {
+    els.creatorPublishedList.innerHTML =
+      "<li class='position-item'><small>No published UGC markets yet.</small></li>";
+  } else {
+    published.forEach((item) => {
+      const li = document.createElement("li");
+      li.className = "position-item";
+      li.innerHTML = `
+        <div class="position-head">
+          <strong>${item.question}</strong>
+          <span class="status-badge status-verified">Published</span>
+        </div>
+        <div class="position-meta">
+          <span>${item.category} · ${item.visibility === "group" ? "Invite-only" : "Public"}</span>
+          <span>Published ${formatShortDate(item.reviewedAt || item.submittedAt)}</span>
+        </div>
+      `;
+      els.creatorPublishedList.appendChild(li);
+    });
+  }
+}
+
+function onCreatorQueueActionClick(event) {
+  const button = event.target.closest("button[data-queue-id][data-queue-action]");
+  if (!button) return;
+  resolveCreatorQueueItem(button.dataset.queueId, button.dataset.queueAction);
+}
+
+function resolveCreatorQueueItem(queueId, action) {
+  const item = state.creatorQueue.find((entry) => entry.id === queueId);
+  if (!item || item.status !== "pending") return;
+  item.status = action === "publish" ? "published" : "rejected";
+  item.reviewedAt = new Date().toISOString();
+
+  if (item.status === "published") {
+    const publishedMarket = {
+      id: `pm-ugc-${item.id}`,
+      question: item.question,
+      category: item.category,
+      closeDate: item.closeDate,
+      yesPrice: item.initialYesPrice,
+      volume: 0,
+      liquidity: item.initialLiquidity,
+      resolutionSource: item.resolutionSource,
+      status: "open",
+      createdBy: item.submittedBy,
+      visibility: item.visibility,
+      groupId: item.visibility === "group" ? item.groupId : null,
+      tape: [],
+    };
+    state.polyMarkets.unshift(publishedMarket);
+
+    if (publishedMarket.groupId) {
+      const config = getGroupConfig(publishedMarket.groupId);
+      if (config) {
+        const exists = config.customMarkets.some((market) => market.id === publishedMarket.id);
+        if (!exists) {
+          config.customMarkets.unshift({
+            id: publishedMarket.id,
+            prompt: publishedMarket.question,
+            closeDate: publishedMarket.closeDate,
+            createdBy: publishedMarket.createdBy,
+            isCustom: true,
+          });
+        }
+      }
+    }
+    refreshTrustedGroupsFromConfigs();
+    persistGroupConfigs();
+    persistPolyMarkets();
+    renderTrustedGroups();
+    renderGovernancePanel();
+    renderGroupMarketDesk();
+    renderForecasts();
+    renderGroupTrades();
+    renderExchangeMarkets();
+    renderExchangeSelectedMarket();
+    toast("UGC market approved and listed on prediction exchange.");
+  } else {
+    toast("UGC market rejected by moderation policy.");
+  }
+
+  persistCreatorQueue();
+  renderCreatorTerminal();
+  renderHappyFlow();
+}
+
 function onGroupTradeActionClick(event) {
   const button = event.target.closest("button[data-group-trade-id][data-market-outcome]");
   if (!button) return;
@@ -1567,9 +2215,14 @@ function renderKpis() {
 }
 
 function calculateOpenExposure() {
-  return state.groupTrades
+  const groupExposure = state.groupTrades
     .filter((trade) => trade.status === "open")
     .reduce((sum, trade) => sum + trade.stake, 0);
+  const exchangeExposure = state.polyPositions.reduce(
+    (sum, position) => sum + position.shares * position.avgPrice,
+    0
+  );
+  return round2(groupExposure + exchangeExposure);
 }
 
 function renderAccount() {
@@ -1597,6 +2250,8 @@ function renderHappyFlow() {
     const activeMembers = (config.members || []).filter((member) => member.status === "active").length;
     return sum + Math.max(0, activeMembers - 3);
   }, 0);
+  const publishedUgcCount = state.creatorQueue.filter((item) => item.status === "published").length;
+  const exchangeTradeCount = Math.max(0, state.account.tradesPlaced - state.groupTrades.length);
 
   const steps = [
     { done: Boolean(state.profile), action: "Complete onboarding profile" },
@@ -1605,6 +2260,8 @@ function renderHappyFlow() {
     { done: approvedInvitesCount > 0, action: "Invite and approve one member in Trusted Groups" },
     { done: customMarketsCount > 0, action: "Create one new market in a trusted group" },
     { done: collaborativeForecastCount > 0, action: "Submit a collaborative forecast" },
+    { done: publishedUgcCount > 0, action: "Publish one market from Creator Terminal queue" },
+    { done: exchangeTradeCount > 0, action: "Execute one trade in Prediction Exchange" },
     { done: state.groupTrades.length > 0, action: "Place first trade in Trusted Groups" },
     {
       done: state.groupTrades.some((trade) => trade.status !== "open"),
@@ -1630,6 +2287,10 @@ function setActiveTab(tab) {
     state.activeTab = "positions";
   } else if (tab === "groups") {
     state.activeTab = "groups";
+  } else if (tab === "exchange") {
+    state.activeTab = "exchange";
+  } else if (tab === "creator") {
+    state.activeTab = "creator";
   } else {
     state.activeTab = "feed";
   }
@@ -1640,6 +2301,8 @@ function setActiveTab(tab) {
   els.feedTabPanel.classList.toggle("hidden", state.activeTab !== "feed");
   els.positionsTabPanel.classList.toggle("hidden", state.activeTab !== "positions");
   els.groupsTabPanel.classList.toggle("hidden", state.activeTab !== "groups");
+  els.exchangeTabPanel.classList.toggle("hidden", state.activeTab !== "exchange");
+  els.creatorTabPanel.classList.toggle("hidden", state.activeTab !== "creator");
 }
 
 function prettyPairingMode(mode) {
@@ -1654,6 +2317,9 @@ function hydrateFromStorage() {
   const rawPositions = localStorage.getItem(STORAGE_POSITIONS_KEY);
   const rawGroupTrades = localStorage.getItem(STORAGE_GROUP_TRADES_KEY);
   const rawGroupConfigs = localStorage.getItem(STORAGE_GROUP_CONFIGS_KEY);
+  const rawPolyMarkets = localStorage.getItem(STORAGE_POLY_MARKETS_KEY);
+  const rawPolyPositions = localStorage.getItem(STORAGE_POLY_POSITIONS_KEY);
+  const rawCreatorQueue = localStorage.getItem(STORAGE_CREATOR_QUEUE_KEY);
   const rawAccount = localStorage.getItem(STORAGE_ACCOUNT_KEY);
 
   if (rawMatches) {
@@ -1685,6 +2351,30 @@ function hydrateFromStorage() {
       state.groupConfigs = JSON.parse(rawGroupConfigs);
     } catch {
       state.groupConfigs = {};
+    }
+  }
+
+  if (rawPolyMarkets) {
+    try {
+      state.polyMarkets = JSON.parse(rawPolyMarkets);
+    } catch {
+      state.polyMarkets = [];
+    }
+  }
+
+  if (rawPolyPositions) {
+    try {
+      state.polyPositions = JSON.parse(rawPolyPositions);
+    } catch {
+      state.polyPositions = [];
+    }
+  }
+
+  if (rawCreatorQueue) {
+    try {
+      state.creatorQueue = JSON.parse(rawCreatorQueue);
+    } catch {
+      state.creatorQueue = [];
     }
   }
 
@@ -1743,6 +2433,18 @@ function persistGroupConfigs() {
   localStorage.setItem(STORAGE_GROUP_CONFIGS_KEY, JSON.stringify(state.groupConfigs));
 }
 
+function persistPolyMarkets() {
+  localStorage.setItem(STORAGE_POLY_MARKETS_KEY, JSON.stringify(state.polyMarkets));
+}
+
+function persistPolyPositions() {
+  localStorage.setItem(STORAGE_POLY_POSITIONS_KEY, JSON.stringify(state.polyPositions));
+}
+
+function persistCreatorQueue() {
+  localStorage.setItem(STORAGE_CREATOR_QUEUE_KEY, JSON.stringify(state.creatorQueue));
+}
+
 function persistAccount() {
   localStorage.setItem(STORAGE_ACCOUNT_KEY, JSON.stringify(state.account));
 }
@@ -1753,6 +2455,9 @@ function resetAll() {
   localStorage.removeItem(STORAGE_POSITIONS_KEY);
   localStorage.removeItem(STORAGE_GROUP_TRADES_KEY);
   localStorage.removeItem(STORAGE_GROUP_CONFIGS_KEY);
+  localStorage.removeItem(STORAGE_POLY_MARKETS_KEY);
+  localStorage.removeItem(STORAGE_POLY_POSITIONS_KEY);
+  localStorage.removeItem(STORAGE_CREATOR_QUEUE_KEY);
   localStorage.removeItem(STORAGE_ACCOUNT_KEY);
   window.location.reload();
 }

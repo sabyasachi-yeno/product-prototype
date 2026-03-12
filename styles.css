@@ -389,6 +389,25 @@ button.danger {
   gap: 0.65rem;
 }
 
+.exchange-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+}
+
+.exchange-market-item {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.7rem;
+  background: #101b31;
+  cursor: pointer;
+}
+
+.exchange-market-item.active {
+  border-color: var(--accent);
+  background: rgba(74, 168, 255, 0.14);
+}
+
 .group-card {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -430,6 +449,10 @@ button.danger {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.8rem;
+}
+
+.kpi-row.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .kpi {
@@ -703,7 +726,8 @@ button.danger {
 @media (max-width: 920px) {
   .onboarding-layout,
   .dashboard,
-  .groups-layout {
+  .groups-layout,
+  .exchange-layout {
     grid-template-columns: 1fr;
   }
 
